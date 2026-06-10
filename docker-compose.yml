@@ -1,0 +1,20 @@
+services:
+  wiremock:
+    image: wiremock/wiremock:latest
+    container_name: wiremock
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./wiremock/mappings:/home/wiremock/mappings
+      - ./wiremock/__files:/home/wiremock/__files
+    command: ["--global-response-templating", "--enable-stub-cors", "--verbose"]
+
+  wiremock-ui:
+    build: .
+    container_name: wiremock-ui
+    ports:
+      - "8081:80"
+    depends_on:
+      - wiremock
+    extra_hosts:
+      - "host.docker.internal:host-gateway"

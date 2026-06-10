@@ -1,0 +1,111 @@
+@import 'tdesign-vue-next/es/style/index.css';
+
+:root {
+  --app-primary: #0052d9;
+  --app-sidebar-width: 260px;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+  font-family: 'PingFang SC', 'Microsoft YaHei', 'Helvetica Neue', sans-serif;
+}
+
+#app {
+  height: 100%;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-thumb {
+  background: #c0c4cc;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* Utility */
+.flex-between {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.flex-center {
+  display: flex;
+  align-items: center;
+}
+.gap-8 { gap: 8px; }
+.gap-12 { gap: 12px; }
+.gap-16 { gap: 16px; }
+.mt-12 { margin-top: 12px; }
+.mt-16 { margin-top: 16px; }
+.mb-12 { margin-bottom: 12px; }
+.text-muted { color: var(--td-text-color-placeholder); }
+.text-sm { font-size: 12px; }
+.text-center { text-align: center; }
+.w-full { width: 100%; }
+
+/* Card style */
+.section-card {
+  background: #fff;
+  border-radius: 8px;
+  padding: 16px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
+}
+
+/* ===================== GitHub Dark Mode ===================== */
+html.dark {
+  color-scheme: dark;
+  --td-brand-color: #58a6ff;
+  --td-brand-color-light: rgba(88, 166, 255, 0.12);
+  --td-bg-color-page: #0d1117;
+  --td-bg-color-container: #161b22;
+  --td-bg-color-container-hover: #1c2128;
+  --td-bg-color-container-active: #1c2128;
+  --td-bg-color-container-select: #1c2128;
+  --td-text-color-primary: #c9d1d9;
+  --td-text-color-secondary: #8b949e;
+  --td-text-color-placeholder: #6e7681;
+  --td-component-stroke: #30363d;
+  --td-border-level-1-color: #30363d;
+  --td-border-level-2-color: #30363d;
+}
+
+html.dark body {
+  background: #0d1117;
+  color: #c9d1d9;
+}
+
+html.dark .section-card {
+  background: #161b22;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+}
+
+/* 暗色模式 JSON 面板背景 */
+html.dark .raw-json {
+  background: #0d1117;
+}
+html.dark .list-panel,
+html.dark .detail-panel {
+  background: #0d1117 !important;
+}
+
+html.dark .act-btn {
+  color: #8b949e !important;
+}
+html.dark .act-btn:hover {
+  color: #58a6ff !important;
+}
+html.dark .close-btn:hover {
+  color: #f85149 !important;
+}
