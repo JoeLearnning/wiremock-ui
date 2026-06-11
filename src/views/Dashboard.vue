@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted, inject } from 'vue'
-import { MessagePlugin, DialogPlugin } from 'tdesign-vue-next'
+import { MessagePlugin } from 'tdesign-vue-next'
 import { useMappingsStore } from '@/stores/mappings'
 import { useGroupsStore } from '@/stores/groups'
 import GroupList from '@/components/GroupList.vue'
@@ -60,18 +60,7 @@ async function handleDelete() {
   }
 }
 
-async function handleReset() {
-  await new Promise<void>((resolve) => {
-    DialogPlugin.confirm({
-      body: '确定要清空所有 Mock 规则吗？此操作不可恢复！',
-      confirmBtn: { content: '确定', theme: 'danger' },
-      cancelBtn: '取消',
-      onConfirm: async () => { await mappingsStore.resetAll(); MessagePlugin.success('已清空所有规则'); resolve() },
-      onCancel: () => resolve(),
-      onClose: () => resolve(),
-    })
-  })
-}
+
 </script>
 
 <template>
@@ -97,9 +86,7 @@ async function handleReset() {
             <span>{{ groupsStore.selectedGroup?.name || '全部' }}</span>
           </span>
         </div>
-        <div class="top-bar-right">
-          <t-button size="small" theme="danger" @click="handleReset">清空所有规则</t-button>
-        </div>
+        <div class="top-bar-right"></div>
       </header>
 
       <div class="content-area">
@@ -152,7 +139,7 @@ async function handleReset() {
 /* Stubs 左右分栏 */
 .stubs-layout { height: 100%; display: flex; overflow: hidden; }
 .stubs-list { width: 35%; min-width: 0; overflow: hidden; border-right: 1px solid var(--td-component-stroke); }
-.stubs-editor { flex: 1; overflow: hidden; background: var(--td-bg-color-container); }
+.stubs-editor { flex: 1; overflow: hidden; background: var(--td-bg-color-container); position: relative; }
 
 .editor-placeholder {
   height: 100%;

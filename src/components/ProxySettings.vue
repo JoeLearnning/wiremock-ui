@@ -8,7 +8,8 @@ import type { ProxyConfig } from '@/api/types'
 const config = ref<ProxyConfig>({
   mode: 'catchall',
   enabled: false,
-  targetBaseUrl: 'http://real-backend:9090'
+  targetBaseUrl: 'http://real-backend:9090',
+  stripPrefix: ''
 })
 
 const loading = ref(false)
@@ -85,6 +86,8 @@ async function handleSave() {
       }
 
       if (config.value.enabled) {
+        const metadata: Record<string, unknown> = {}
+        if (config.value.stripPrefix) metadata.stripPrefix = config.value.stripPrefix
         await mappingsApi.createMapping({
           name: '[代理转发] Catch-All Proxy',
           priority: 10,
@@ -94,7 +97,8 @@ async function handleSave() {
           },
           response: {
             proxyBaseUrl: config.value.targetBaseUrl
-          }
+          },
+          metadata
         })
       }
 
@@ -142,6 +146,15 @@ async function handleSave() {
           <t-input
             v-model="config.targetBaseUrl"
             placeholder="http://real-backend:9090"
+            :disabled="!config.enabled"
+          >
+          </t-input>
+        </t-form-item>
+
+        <t-form-item label="去除前缀">
+          <t-input
+            v-model="config.stripPrefix"
+            placeholder="例如：/api/v1，转发时去掉此前缀"
             :disabled="!config.enabled"
           />
         </t-form-item>

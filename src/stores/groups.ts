@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import type { GroupInfo, StubMapping } from '@/api/types'
 import * as settingsApi from '@/api/settings'
+import { generateId } from '@/utils/uuid'
 
 export const useGroupsStore = defineStore('groups', () => {
   const groups = ref<GroupInfo[]>([])
@@ -79,10 +80,11 @@ export const useGroupsStore = defineStore('groups', () => {
     }
   }
 
-  async function addGroup(name: string, description = '', parentId?: string): Promise<GroupInfo> {
+  async function addGroup(name: string, description = '', parentId?: string, prefix?: string): Promise<GroupInfo> {
     const group: GroupInfo = {
-      id: crypto.randomUUID(),
+      id: generateId(),
       name,
+      prefix,
       description,
       parentId,
       stubIds: [],

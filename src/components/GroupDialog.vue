@@ -10,13 +10,14 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   'update:visible': [value: boolean]
-  confirm: [data: { name: string; description: string; parentId?: string }]
+  confirm: [data: { name: string; description: string; parentId?: string; prefix?: string }]
 }>()
 
 const groupsStore = useGroupsStore()
 
 const name = ref('')
 const description = ref('')
+const prefix = ref('')
 const parentId = ref<string>('')
 const visible = computed({
   get: () => props.visible,
@@ -36,6 +37,7 @@ watch(
     if (val) {
       name.value = props.group?.name || ''
       description.value = props.group?.description || ''
+      prefix.value = props.group?.prefix || ''
       parentId.value = props.group?.parentId || ''
     }
   }
@@ -46,6 +48,7 @@ function handleConfirm() {
   emit('confirm', {
     name: name.value.trim(),
     description: description.value.trim(),
+    prefix: prefix.value.trim() || undefined,
     parentId: parentId.value || undefined
   })
 }
@@ -72,6 +75,9 @@ function handleConfirm() {
             :label="g.name"
           />
         </t-select>
+      </t-form-item>
+      <t-form-item label="URL 前缀">
+        <t-input v-model="prefix" placeholder="例如：/api/v1（该分组下 stub 将自动添加此前缀）" />
       </t-form-item>
       <t-form-item label="描述">
         <t-textarea

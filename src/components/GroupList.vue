@@ -80,12 +80,12 @@ async function handleDelete(id: string) {
   })
 }
 
-async function handleDialogConfirm(data: { name: string; description: string; parentId?: string }) {
+async function handleDialogConfirm(data: { name: string; description: string; parentId?: string; prefix?: string }) {
   if (editingGroupId.value) {
     await groupsStore.updateGroup(editingGroupId.value, data)
     MessagePlugin.success('分组已更新')
   } else {
-    const group = await groupsStore.addGroup(data.name, data.description, data.parentId)
+    const group = await groupsStore.addGroup(data.name, data.description, data.parentId, data.prefix)
     groupsStore.selectGroup(group.id)
     MessagePlugin.success('分组已创建')
   }
@@ -173,6 +173,7 @@ const flatGroups = computed<FlatGroupItem[]>(() => {
         <t-icon name="folder" class="group-icon" />
         <div class="group-info">
           <div class="group-name">{{ item.group.name }}</div>
+          <div v-if="item.group.prefix" class="group-prefix">{{ item.group.prefix }}</div>
           <div v-if="item.group.description" class="group-desc">{{ item.group.description }}</div>
           <div class="group-meta">
             <span v-if="item.group.stubIds.length">{{ item.group.stubIds.length }} 条规则</span>
@@ -311,6 +312,15 @@ const flatGroups = computed<FlatGroupItem[]>(() => {
 .group-desc {
   font-size: 11px;
   color: var(--td-text-color-placeholder);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-top: 1px;
+}
+.group-prefix {
+  font-size: 11px;
+  color: var(--td-brand-color);
+  font-family: monospace;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

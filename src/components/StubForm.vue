@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { watch } from 'vue'
 import { useGroupsStore } from '@/stores/groups'
 import JsonEditor from './JsonEditor.vue'
 
@@ -46,7 +47,19 @@ const OPERATORS = [
 const groupsStore = useGroupsStore()
 
 const form = defineModel<any>('form', { required: true })
-function getUrlPlaceholder() { return { url: '/api/user/info', urlPath: '/api/user', urlPathPattern: '/api/.*', urlPattern: '.*/api/user/.*' }[form.value.urlType] || '' }
+
+// 选择分组时自动填充前缀
+watch(() => form.value.selectedGroupId, (groupId) => {
+  if (groupId) {
+    const g = groupsStore.groups.find(g => g.id === groupId)
+    if (g?.prefix) form.value.prefix = g.prefix
+  }
+})
+
+function getUrlPlaceholder() {
+  const map: Record<string, string> = { url: '/api/user/info', urlPath: '/api/user', urlPathPattern: '/api/.*', urlPattern: '.*/api/user/.*' }
+  return map[form.value.urlType] || ''
+}
 function addResponseHeader() { form.value.responseHeaders.push({ key: '', value: '' }) }
 function removeResponseHeader(i: number) { form.value.responseHeaders.splice(i, 1) }
 
@@ -70,7 +83,18 @@ function onOperatorChange(f: any) {
   <t-divider>请求匹配</t-divider>
   <t-form-item label="请求方法"><t-select v-model="form.method" :style="{ width: '140px' }"><t-option v-for="m in ALL_METHODS" :key="m" :value="m" :label="m" /></t-select></t-form-item>
   <t-form-item label="URL 类型"><t-radio-group v-model="form.urlType" size="small"><t-radio value="url">精确匹配</t-radio><t-radio value="urlPath">路径匹配</t-radio><t-radio value="urlPathPattern">路径正则</t-radio><t-radio value="urlPattern">全 URL 正则</t-radio></t-radio-group></t-form-item>
-  <t-form-item label="URL" required><t-input v-model="form.url" :placeholder="getUrlPlaceholder()" /></t-form-item>
+  <t-form-item label="URL 前缀">
+    <div class="prefix-row">
+      <t-input v-model="form.prefix" placeholder="/api/v1" size="small" :style="{ width: '140px', fontFamily: 'monospace' }" />
+      <span class="text-sm text-muted">选中分组后自动填充</span>
+    </div>
+  </t-form-item>
+  <t-form-item label="URL" required>
+    <div class="url-with-prefix">
+      <span v-if="form.prefix" class="url-prefix-badge">{{ form.prefix }}</span>
+      <t-input v-model="form.url" :placeholder="getUrlPlaceholder()" />
+    </div>
+  </t-form-item>
 
   <!-- 请求筛选条件 -->
   <t-form-item label="匹配条件">
@@ -119,7 +143,10 @@ function onOperatorChange(f: any) {
       <div class="fault-radio"><span class="radio-dot" v-if="form.faultType === f.value" /></div><div class="fault-body"><div class="fault-label">{{ f.label }}</div><div class="fault-desc">{{ f.desc }}</div></div>
     </div>
   </div>
-  <template v-if="form.respMode === 'proxy'"><t-form-item label="代理目标" required><t-input v-model="form.proxyBaseUrl" placeholder="http://real-backend:9090" /></t-form-item></template>
+  <template v-if="form.respMode === 'proxy'">
+    <t-form-item label="代理目标" required><t-input v-model="form.proxyBaseUrl" placeholder="http://real-backend:9090" /></t-form-item>
+    <t-form-item label="过滤前缀"><t-input v-model="form.stripPrefix" placeholder="转发时去掉此前缀，例如：/api/v1" /></t-form-item>
+  </template>
   <t-divider>高级配置</t-divider>
   <t-form-item label="响应延时(ms)"><t-input-number v-model="form.fixedDelay" :min="0" :max="300000" :style="{ width: '140px' }" /><span class="text-sm text-muted" style="margin-left:8px">0 = 无延迟</span></t-form-item>
 </template>
@@ -145,4 +172,23 @@ function onOperatorChange(f: any) {
 
 .filter-row { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; flex-wrap: wrap; }
 .filter-not { flex-shrink: 0; font-size: 12px; }
+
+.prefix-row { display: flex; align-items: center; gap: 8px; }
+.url-with-prefix { display: flex; align-items: center; gap: 0; width: 100%; }
+.url-with-prefix :deep(.t-input) { flex: 1; }
+.url-prefix-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 8px;
+  height: 32px;
+  background: var(--td-brand-color-light);
+  color: var(--td-brand-color);
+  font-family: monospace;
+  font-size: 13px;
+  border: 1px solid var(--td-component-stroke);
+  border-right: none;
+  border-radius: 6px 0 0 6px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
 </style>

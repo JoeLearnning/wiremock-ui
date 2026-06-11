@@ -1,5 +1,6 @@
 import client from './client'
 import type { GlobalSettings, RequestJournal, GroupInfo } from './types'
+import { generateId } from '@/utils/uuid'
 
 /** 系统 Mock 的固定 UUID —— 用于存储分组数据，在 UI 中隐藏 */
 export const SYSTEM_MOCK_UUID = '00000000-0000-0000-0000-000000000000'
@@ -9,6 +10,7 @@ export interface FolderTreeNode {
   id: string
   label: string
   description?: string
+  prefix?: string
   children?: FolderTreeNode[]
 }
 
@@ -51,10 +53,11 @@ export async function getRequests(params?: { limit?: number; since?: string; ear
 export function treeToFlat(nodes: FolderTreeNode[], parentId?: string): GroupInfo[] {
   const result: GroupInfo[] = []
   for (const node of nodes) {
-    const id = node.id || crypto.randomUUID()
+    const id = node.id || generateId()
     result.push({
       id,
       name: node.label,
+      prefix: node.prefix,
       description: node.description,
       parentId,
       stubIds: [],
@@ -74,7 +77,7 @@ export function flatToTree(groups: GroupInfo[]): FolderTreeNode[] {
 
   // 创建所有节点
   for (const g of groups) {
-    map.set(g.id, { id: g.id, label: g.name, description: g.description, children: [] })
+    map.set(g.id, { id: g.id, label: g.name, description: g.description, prefix: g.prefix, children: [] })
   }
 
   // 构建父子关系

@@ -74,6 +74,7 @@ export interface GlobalSettings {
 export interface GroupInfo {
   id: string
   name: string
+  prefix?: string   // URL 前缀，选中该分组后 stub URL 会自动添加此前缀
   description?: string
   parentId?: string  // 支持嵌套分组
   stubIds: string[]
@@ -93,6 +94,7 @@ export interface ProxyConfig {
   mode: 'global' | 'catchall'
   enabled: boolean
   targetBaseUrl: string
+  stripPrefix?: string  // 代理转发时去除的前缀
 }
 
 // ====== 请求历史类型 ======
