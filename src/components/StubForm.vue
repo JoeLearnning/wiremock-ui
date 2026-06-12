@@ -27,6 +27,39 @@ const headerValueMap: Record<string, string[]> = {
   'X-Requested-With': ['XMLHttpRequest'],
 }
 
+// 响应头推荐项
+const commonResponseHeaders = [
+  'Content-Type', 'Cache-Control', 'Set-Cookie',
+  'Access-Control-Allow-Origin', 'Access-Control-Allow-Methods', 'Access-Control-Allow-Headers',
+  'Access-Control-Max-Age', 'Access-Control-Expose-Headers', 'Access-Control-Allow-Credentials',
+  'Content-Encoding', 'Content-Disposition',
+  'ETag', 'Last-Modified', 'Location',
+  'X-Request-Id', 'X-Trace-Id', 'X-Response-Time',
+  'X-RateLimit-Limit', 'X-RateLimit-Remaining', 'Retry-After',
+  'X-Frame-Options', 'X-Content-Type-Options', 'X-XSS-Protection',
+  'Strict-Transport-Security', 'Content-Security-Policy',
+  'Server', 'Vary', 'Pragma', 'Expires',
+]
+const respHeaderValueMap: Record<string, string[]> = {
+  'Content-Type': ['application/json; charset=utf-8', 'text/html; charset=utf-8', 'text/plain; charset=utf-8', 'application/xml', 'application/octet-stream'],
+  'Cache-Control': ['no-cache, no-store, must-revalidate', 'no-cache', 'max-age=3600', 'public, max-age=86400', 'private', 'no-store'],
+  'Access-Control-Allow-Origin': ['*', 'https://example.com'],
+  'Access-Control-Allow-Methods': ['GET, POST, PUT, DELETE, OPTIONS', 'GET, POST', 'GET'],
+  'Access-Control-Allow-Headers': ['Content-Type, Authorization', '*', 'Content-Type'],
+  'Access-Control-Max-Age': ['3600', '86400'],
+  'Access-Control-Allow-Credentials': ['true', 'false'],
+  'Content-Encoding': ['gzip', 'br', 'deflate'],
+  'X-Frame-Options': ['DENY', 'SAMEORIGIN', 'ALLOW-FROM https://example.com'],
+  'X-Content-Type-Options': ['nosniff'],
+  'X-XSS-Protection': ['1; mode=block', '1', '0'],
+  'Strict-Transport-Security': ['max-age=31536000; includeSubDomains', 'max-age=31536000'],
+  'Content-Security-Policy': ["default-src 'self'", "default-src 'self' 'unsafe-inline'", "default-src 'none'"],
+  'Content-Disposition': ['attachment; filename="file.pdf"', 'inline'],
+  'Vary': ['Accept-Encoding', 'Origin'],
+  'Pragma': ['no-cache'],
+  'Expires': ['0', 'Thu, 01 Dec 1994 16:00:00 GMT'],
+}
+
 function getHeaderValueOptions(key: string): string[] {
   return headerValueMap[key] || []
 }
@@ -37,14 +70,43 @@ const FILTER_TYPES = [
   { value: 'cookie', label: 'Cookie' },
   { value: 'body', label: '请求体' },
 ]
-const OPERATORS = [
-  { value: 'equalTo', label: '等于' },
+const TEXT_OPERATORS = [
+  { value: 'equalTo', label: '等于', hasCaseInsensitive: true },
+  { value: 'doesNotEqual', label: '不等于' },
   { value: 'contains', label: '包含' },
+  { value: 'doesNotContain', label: '不包含' },
   { value: 'matches', label: '正则匹配' },
   { value: 'doesNotMatch', label: '不匹配' },
   { value: 'absent', label: '不存在' },
 ]
+const BODY_OPERATORS = [
+  { value: 'equalToJson', label: 'JSON 相等' },
+  { value: 'matchesJsonPath', label: 'JSON Path' },
+]
+
+// JSON Path 子匹配器 —— 当选择 JSON Path 后，进一步指定匹配方式
+const JSONPATH_SUB_MATCHERS = [
+  { value: '', label: '仅匹配路径存在' },
+  { value: 'equalTo', label: '等于' },
+  { value: 'equalToJson', label: 'JSON 等于' },
+  { value: 'contains', label: '包含' },
+  { value: 'matches', label: '正则匹配' },
+  { value: 'doesNotContain', label: '不包含' },
+  { value: 'absent', label: '路径不存在' },
+]
+
 const groupsStore = useGroupsStore()
+
+function getOperators(filterType: string): { value: string; label: string; hasCaseInsensitive?: boolean; disabled?: boolean }[] {
+  if (filterType === 'body') {
+    return [
+      ...TEXT_OPERATORS.filter(o => o.value !== 'absent'),
+      { value: '', label: '── JSON ──', disabled: true } as any,
+      ...BODY_OPERATORS,
+    ]
+  }
+  return TEXT_OPERATORS
+}
 
 const form = defineModel<any>('form', { required: true })
 
@@ -62,20 +124,43 @@ function getUrlPlaceholder() {
 }
 function addResponseHeader() { form.value.responseHeaders.push({ key: '', value: '' }) }
 function removeResponseHeader(i: number) { form.value.responseHeaders.splice(i, 1) }
+function getRespHeaderValueOptions(key: string): string[] {
+  return respHeaderValueMap[key] || []
+}
+function onRespHeaderKeyChange(h: any) {
+  h.value = ''
+}
 
 // 请求筛选
-function addFilter() { form.value.filters.push({ type: 'header', key: '', operator: 'equalTo', value: '', not: false }) }
+function addFilter() { form.value.filters.push({ type: 'header', key: '', operator: 'equalTo', value: '', not: false, caseInsensitive: false }) }
 function removeFilter(i: number) { form.value.filters.splice(i, 1) }
 function onFilterTypeChange(f: any) {
   if (f.operator === 'absent') f.value = ''
 }
 function onOperatorChange(f: any) {
-  if (f.operator === 'absent') f.value = ''
+  if (f.operator === 'absent') {
+    f.value = ''
+  }
+  // 切换到 JSON Path 时，确保默认子匹配器字段存在
+  if (f.operator === 'matchesJsonPath') {
+    if (!('subMatcher' in f)) f.subMatcher = ''
+    if (!('subValue' in f)) f.subValue = ''
+  }
+}
+function onJsonPathSubChange(f: any) {
+  // 子匹配器为空或 absent 时清空子值
+  if (!f.subMatcher || f.subMatcher === 'absent') {
+    f.subValue = ''
+  }
+}
+function onFilterKeyChange(f: any) {
+  f.value = ''
 }
 </script>
 
 <template>
   <t-form-item label="规则名称"><t-input v-model="form.name" placeholder="便于识别的名称（可选）" /></t-form-item>
+  <t-form-item label="描述"><t-input v-model="form.description" placeholder="规则说明，例如接口用途、请求参数等" /></t-form-item>
   <t-form-item label="所属分组">
     <t-select v-model="form.selectedGroupId" clearable placeholder="选择分组（可选）" :style="{ width: '200px' }"><t-option v-for="g in groupsStore.groups" :key="g.id" :value="g.id" :label="g.name" /></t-select>
   </t-form-item>
@@ -85,7 +170,7 @@ function onOperatorChange(f: any) {
   <t-form-item label="URL 类型"><t-radio-group v-model="form.urlType" size="small"><t-radio value="url">精确匹配</t-radio><t-radio value="urlPath">路径匹配</t-radio><t-radio value="urlPathPattern">路径正则</t-radio><t-radio value="urlPattern">全 URL 正则</t-radio></t-radio-group></t-form-item>
   <t-form-item label="URL 前缀">
     <div class="prefix-row">
-      <t-input v-model="form.prefix" placeholder="/api/v1" size="small" :style="{ width: '140px', fontFamily: 'monospace' }" />
+      <t-input v-model="form.prefix" placeholder="/api/v1" :style="{ width: '160px', fontFamily: 'monospace' }" />
       <span class="text-sm text-muted">选中分组后自动填充</span>
     </div>
   </t-form-item>
@@ -99,19 +184,52 @@ function onOperatorChange(f: any) {
   <!-- 请求筛选条件 -->
   <t-form-item label="匹配条件">
     <div class="w-full">
-      <div v-for="(f, i) in form.filters" :key="i" class="filter-row">
-        <t-select v-model="f.type" size="small" :style="{ width: '90px', flexShrink: 0 }" @change="onFilterTypeChange(f)">
-          <t-option v-for="ft in FILTER_TYPES" :key="ft.value" :value="ft.value" :label="ft.label" />
-        </t-select>
-        <t-checkbox v-model="f.not" size="small" class="filter-not">NOT</t-checkbox>
-        <t-select v-model="f.key" filterable allow-create creatable placeholder="key" size="small" :style="{ width: '130px', flexShrink: 0 }">
-          <t-option v-for="hk in commonHeaders" :key="hk" :value="hk" :label="hk" />
-        </t-select>
-        <t-select v-model="f.operator" size="small" :style="{ width: '100px', flexShrink: 0 }" @change="onOperatorChange(f)">
-          <t-option v-for="op in OPERATORS" :key="op.value" :value="op.value" :label="op.label" />
-        </t-select>
-        <t-input v-if="f.operator !== 'absent'" v-model="f.value" placeholder="value" size="small" :style="{ flex: 1 }" />
-        <t-button size="small" theme="danger" variant="text" @click="removeFilter(i)"><t-icon name="delete" /></t-button>
+      <div v-for="(f, i) in form.filters" :key="i" class="filter-block">
+        <div class="filter-row">
+          <t-select v-model="f.type" class="col-type" @change="onFilterTypeChange(f)">
+            <t-option v-for="ft in FILTER_TYPES" :key="ft.value" :value="ft.value" :label="ft.label" />
+          </t-select>
+          <t-checkbox v-model="f.not" class="col-not">NOT</t-checkbox>
+          <div v-if="f.type !== 'body'" class="col-key">
+            <t-input v-model="f.key" placeholder="Key" @blur="onFilterKeyChange(f)" />
+          </div>
+          <div v-else class="col-key" />
+          <t-select v-model="f.operator" class="col-op" @change="onOperatorChange(f)">
+            <t-option v-for="op in getOperators(f.type)" :key="op.value" :value="op.value" :label="op.label" :disabled="op.disabled" />
+          </t-select>
+          <div v-if="f.operator !== 'absent'" class="col-val">
+            <!-- JSON Path 三栏专用布局 -->
+            <div v-if="f.operator === 'matchesJsonPath'" class="jsonpath-row">
+              <div class="jsonpath-expr-wrap">
+                <span class="jsonpath-prefix">$</span>
+                <t-input v-model="f.value" placeholder="路径，如 .Id 或 ..name" size="small" @blur="() => { if (!f.value.startsWith('$')) f.value = '$' + f.value }" />
+              </div>
+              <t-select v-model="f.subMatcher" size="small" class="jsonpath-op" placeholder="匹配方式" clearable @change="onJsonPathSubChange(f)">
+                <t-option v-for="op in JSONPATH_SUB_MATCHERS" :key="op.value" :value="op.value" :label="op.label" />
+              </t-select>
+              <t-input v-if="f.subMatcher && f.subMatcher !== 'absent'" v-model="f.subValue" placeholder="期望值" size="small" class="jsonpath-val" />
+            </div>
+            <!-- 默认单栏布局 -->
+            <div v-else class="val-row">
+              <t-input v-model="f.value" placeholder="value" :style="{ flex: 1 }" />
+              <t-checkbox v-if="f.operator === 'equalTo' && f.type !== 'body'" v-model="f.caseInsensitive" class="val-opt">忽略大小写</t-checkbox>
+            </div>
+          </div>
+          <div v-else class="col-val" />
+          <t-button theme="danger" variant="text" class="col-del" @click="removeFilter(i)"><t-icon name="delete" /></t-button>
+        </div>
+        <!-- Key 建议 -->
+        <div v-if="f.type === 'header' && !f.key" class="suggest-row">
+          <div class="suggest-inner" style="grid-column:3">
+            <span v-for="hk in commonHeaders" :key="hk" class="suggest-chip" @click="f.key = hk; onFilterKeyChange(f)">{{ hk }}</span>
+          </div>
+        </div>
+        <!-- Value 建议 -->
+        <div v-if="f.type === 'header' && f.key && headerValueMap[f.key]?.length && !f.value" class="suggest-row">
+          <div class="suggest-inner" style="grid-column:5">
+            <span v-for="v in headerValueMap[f.key]" :key="v" class="suggest-chip" @click="f.value = v">{{ v }}</span>
+          </div>
+        </div>
       </div>
       <t-button size="small" variant="dashed" @click="addFilter"><template #icon><t-icon name="add" /></template>添加匹配条件</t-button>
     </div>
@@ -129,10 +247,20 @@ function onOperatorChange(f: any) {
     <t-form-item label="响应体"><JsonEditor v-model="form.responseBody" /></t-form-item>
     <t-form-item label="响应头">
       <div class="w-full">
-        <div v-for="(h, i) in form.responseHeaders" :key="i" class="flex-center gap-8 mb-8">
-          <t-input v-model="h.key" placeholder="Key" size="small" :style="{ flex: '4 1 100px' }" />
-          <t-input v-model="h.value" placeholder="Value" size="small" :style="{ flex: '6 1 150px' }" />
-          <t-button size="small" theme="danger" @click="removeResponseHeader(i)"><t-icon name="delete" /></t-button>
+        <div v-for="(h, i) in form.responseHeaders" :key="i" class="resp-header-block">
+          <div class="resp-header-row">
+            <t-input v-model="h.key" placeholder="Key" :style="{ flex: '4 1 100px' }" @change="onRespHeaderKeyChange(h)" />
+            <t-input v-model="h.value" placeholder="Value" :style="{ flex: '6 1 150px' }" />
+            <t-button theme="danger" variant="text" @click="removeResponseHeader(i)"><t-icon name="delete" /></t-button>
+          </div>
+          <!-- Key 建议 -->
+          <div class="resp-header-suggest" v-if="!h.key">
+            <span v-for="hk in commonResponseHeaders" :key="hk" class="suggest-chip" @click="h.key = hk; onRespHeaderKeyChange(h)">{{ hk }}</span>
+          </div>
+          <!-- Value 建议 -->
+          <div class="resp-header-suggest" v-if="h.key && getRespHeaderValueOptions(h.key).length && !h.value">
+            <span v-for="v in getRespHeaderValueOptions(h.key)" :key="v" class="suggest-chip" @click="h.value = v">{{ v }}</span>
+          </div>
         </div>
         <t-button size="small" variant="dashed" @click="addResponseHeader"><template #icon><t-icon name="add" /></template>添加响应头</t-button>
       </div>
@@ -170,8 +298,105 @@ function onOperatorChange(f: any) {
 .fault-label { font-size: 14px; font-weight: 500; }
 .fault-desc { font-size: 12px; color: var(--td-text-color-placeholder); margin-top: 2px; }
 
-.filter-row { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; flex-wrap: wrap; }
-.filter-not { flex-shrink: 0; font-size: 12px; }
+.filter-block {
+  margin-bottom: 10px;
+}
+.filter-row {
+  display: grid;
+  grid-template-columns: 90px auto 150px 120px 1fr auto;
+  gap: 6px;
+  align-items: center;
+}
+.col-not  { text-align: center; font-size: 12px; }
+.col-key  { min-width: 0; }
+.col-op   { min-width: 0; }
+.col-val  { min-width: 0; overflow: hidden; }
+
+/* 建议行 —— 与 filter-row 使用相同的 grid，item 通过 grid-column 对齐 */
+.suggest-row {
+  display: grid;
+  grid-template-columns: 90px auto 150px 120px 1fr auto;
+  gap: 6px;
+  padding-top: 4px;
+}
+.suggest-inner {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  min-width: 0;
+}
+
+.val-row { display: flex; align-items: center; gap: 6px; }
+.val-opt { flex-shrink: 0; font-size: 12px; white-space: nowrap; }
+
+/* JSON Path 三栏布局 —— 使用 grid 避免 flex 塌缩 */
+.jsonpath-row {
+  display: grid;
+  grid-template-columns: 1fr 110px 1fr;
+  gap: 6px;
+  align-items: center;
+  width: 100%;
+}
+.jsonpath-expr-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+.jsonpath-prefix {
+  position: absolute;
+  left: 8px;
+  z-index: 2;
+  font-family: 'Cascadia Code', 'Fira Code', 'JetBrains Mono', monospace;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--td-brand-color);
+  pointer-events: none;
+  line-height: 32px;
+}
+.jsonpath-expr-wrap :deep(.t-input) {
+  padding-left: 24px;
+  font-family: 'Cascadia Code', 'Fira Code', 'JetBrains Mono', monospace;
+  font-size: 13px;
+}
+.jsonpath-op {
+  min-width: 0;
+}
+.jsonpath-val {
+  min-width: 0;
+}
+
+.suggest-chip {
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: var(--td-bg-color-container);
+  border: 1px solid var(--td-component-stroke);
+  cursor: pointer;
+  color: var(--td-text-color-secondary);
+  width: fit-content;
+}
+.suggest-chip:hover {
+  border-color: var(--td-brand-color);
+  color: var(--td-brand-color);
+}
+.filter-option { padding: 2px 0 0 102px; }
+
+.resp-header-block {
+  margin-bottom: 12px;
+}
+.resp-header-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.resp-header-suggest {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding-top: 6px;
+  padding-left: 0;
+}
 
 .prefix-row { display: flex; align-items: center; gap: 8px; }
 .url-with-prefix { display: flex; align-items: center; gap: 0; width: 100%; }

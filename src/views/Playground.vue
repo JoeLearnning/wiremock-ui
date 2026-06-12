@@ -5,6 +5,7 @@ import { MessagePlugin } from 'tdesign-vue-next'
 import VueJsonPretty from 'vue-json-pretty'
 import 'vue-json-pretty/lib/styles.css'
 import client from '@/api/client'
+import { useMappingsStore } from '@/stores/mappings'
 
 const commonHeaders = [
   'Content-Type', 'Accept', 'Authorization', 'User-Agent', 'Referer',
@@ -28,6 +29,8 @@ const PROXY_BASE = '/test-mock'
 const props = defineProps<{ visible: boolean; presetRequest?: any }>()
 const emit = defineEmits<{ 'update:visible': [v: boolean] }>()
 const visible = computed({ get: () => props.visible, set: (v: boolean) => emit('update:visible', v) })
+
+const mappingsStore = useMappingsStore()
 
 onUnmounted(() => { document.body.style.overflow = '' })
 
@@ -148,7 +151,10 @@ async function sendRequest() {
 }
 
 async function saveRequestToStub() {
-  if (!stubId.value) return
+  if (!stubId.value) {
+    MessagePlugin.warning('未关联 Mock 规则，无法保存')
+    return
+  }
   saving.value = true
   try {
     const { data: existing } = await client.get(`/mappings/${stubId.value}`)
@@ -160,13 +166,24 @@ async function saveRequestToStub() {
       bodyType: requestConfig.value.bodyType,
       formData: requestConfig.value.formData.filter((f: any) => f.key.trim()),
     }
-    const updated = {
-      ...existing,
-      metadata: { ...(existing.metadata || {}), testRequest },
+
+    // 只取 WireMock 核心字段，避免额外字段（postServeActions、scenarioName 等）导致 PUT 失败
+    const { uuid, id, name, request, response, priority, persistent, metadata: existingMeta } = existing as any
+    const clean: any = {
+      request, response,
+      name: name || undefined,
+      priority: priority ?? 5,
+      persistent: persistent ?? true,
     }
-    await client.put(`/mappings/${stubId.value}`, updated)
+    if (uuid) clean.uuid = uuid
+    if (id) clean.id = id
+
+    clean.metadata = { ...(existingMeta || {}), testRequest }
+
+    await mappingsStore.updateMapping(stubId.value, clean)
     MessagePlugin.success('请求配置已保存，下次点击「测试」自动加载')
   } catch (e: any) {
+    console.error('[Playground] 保存测试用例失败:', e)
     MessagePlugin.error('保存失败: ' + (e.message || '未知错误'))
   } finally {
     saving.value = false

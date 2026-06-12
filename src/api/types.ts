@@ -33,7 +33,7 @@ export interface StringValuePattern {
 
 export interface BodyPattern {
   equalToJson?: unknown
-  matchesJsonPath?: string
+  matchesJsonPath?: string | { expression: string; [key: string]: unknown }
   contains?: string
   matches?: string
 }

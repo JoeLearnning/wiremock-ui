@@ -47,6 +47,11 @@ async function handleSave(stub: StubMapping) {
   }
 }
 
+async function handleCopyAsNew(stub: StubMapping) {
+  editingStub.value = stub
+  creatingNew.value = true
+}
+
 async function handleDelete() {
   const id = editingStub.value?.uuid || editingStub.value?.id
   if (id) {
@@ -98,7 +103,7 @@ async function handleDelete() {
               </div>
               <div class="stubs-editor">
                 <template v-if="editingStub !== null || creatingNew">
-                  <StubEditor inline :stub="editingStub" @save="handleSave" @cancel="handleCancel" @delete="handleDelete" @test-request="openPlayground" />
+                  <StubEditor inline :stub="editingStub" @save="handleSave" @cancel="handleCancel" @delete="handleDelete" @test-request="openPlayground" @copy-as-new="handleCopyAsNew" />
                 </template>
                 <div v-else class="editor-placeholder">
                   <div class="ph-illustration">

@@ -13,13 +13,13 @@ const groupsStore = useGroupsStore()
 
 interface Props { visible?: boolean; stub: StubMapping | null; inline?: boolean }
 const props = withDefaults(defineProps<Props>(), { visible: false, inline: false })
-const emit = defineEmits<{ 'update:visible': [v: boolean]; save: [stub: StubMapping]; cancel: []; delete: []; testRequest: [config: any] }>()
+const emit = defineEmits<{ 'update:visible': [v: boolean]; save: [stub: StubMapping]; cancel: []; delete: []; testRequest: [config: any]; copyAsNew: [stub: StubMapping] }>()
 
 const visible = computed({ get: () => props.visible, set: (v) => { if (!props.inline) emit('update:visible', v) } })
 const isNew = computed(() => !(props.stub?.uuid || props.stub?.id))
 
 const form = ref({
-  name: '', method: 'GET', urlType: 'url' as string, url: '', prefix: '', stripPrefix: '',
+  name: '', description: '', method: 'GET', urlType: 'url' as string, url: '', prefix: '', stripPrefix: '',
   respMode: 'direct' as string, status: 200, contentType: 'application/json',
   responseBody: '{\n  "message": "success",\n  "code": 0,\n  "data": {}\n}',
   faultType: 'CONNECTION_RESET_BY_PEER', proxyBaseUrl: '',
@@ -30,13 +30,18 @@ const form = ref({
 })
 
 watch(() => props.stub, (s) => {
-  if (s && (s.uuid || s.id)) loadStub(s)
-  else resetForm()
+  if (s) {
+    if (s.request || s.response) loadStub(s)
+    else if (s.uuid || s.id) loadStub(s)
+    else resetForm()
+  } else {
+    resetForm()
+  }
 }, { immediate: true })
 
 function loadStub(s: StubMapping) {
   const f: any = form.value
-  f.name = s.name || ''; f.method = s.request?.method || 'GET'; f.fixedDelay = s.response?.fixedDelayMilliseconds ?? 0; f.priority = s.priority ?? 5
+  f.name = s.name || ''; f.description = (s.metadata?.description as string) || ''; f.method = s.request?.method || 'GET'; f.fixedDelay = s.response?.fixedDelayMilliseconds ?? 0; f.priority = s.priority ?? 5
 
   // Parse URL
   const savedPrefix = (s.metadata?.prefix as string) || ''
@@ -58,11 +63,11 @@ function loadStub(s: StubMapping) {
   const parsePatterns = (patterns: Record<string, any> | undefined, type: string) => {
     if (!patterns) return
     for (const [key, v] of Object.entries(patterns)) {
-      if (typeof v === 'string') { filters.push({ type, key, operator: 'equalTo', value: v, not: false }) }
+      if (typeof v === 'string') { filters.push({ type, key, operator: 'equalTo', value: v, not: false, caseInsensitive: false }) }
       else if (v && typeof v === 'object') {
-        for (const op of ['equalTo','contains','matches','doesNotMatch','absent']) {
+        for (const op of ['equalTo','doesNotEqual','contains','doesNotContain','matches','doesNotMatch','absent']) {
           if (op in v) {
-            filters.push({ type, key, operator: op, value: (op === 'absent' ? '' : String(v[op] || '')), not: false })
+            filters.push({ type, key, operator: op, value: (op === 'absent' ? '' : String(v[op] || '')), not: false, caseInsensitive: !!v.caseInsensitive })
             break
           }
         }
@@ -75,12 +80,35 @@ function loadStub(s: StubMapping) {
   // bodyPatterns
   if (s.request?.bodyPatterns) {
     for (const bp of s.request.bodyPatterns) {
-      for (const op of ['equalToJson','matchesJsonPath','contains','matches']) {
+      let matched = false
+      // 检查 matchesJsonPath（可能为字符串或对象）
+      if ((bp as any).matchesJsonPath !== undefined) {
+        const mjp = (bp as any).matchesJsonPath
+        if (typeof mjp === 'string') {
+          filters.push({ type: 'body', key: '', operator: 'matchesJsonPath', value: mjp, not: false, caseInsensitive: false, subMatcher: '', subValue: '' })
+        } else if (mjp && typeof mjp === 'object') {
+          const expr = mjp.expression || ''
+          // 查找子匹配器（排除 expression）
+          const subKeys = ['equalTo','equalToJson','contains','doesNotContain','matches','absent']
+          let sub = '' as string, subVal = '' as string
+          for (const sk of subKeys) {
+            if (mjp[sk] !== undefined) { sub = sk; subVal = sk === 'absent' ? '' : String(mjp[sk] || ''); break }
+          }
+          filters.push({ type: 'body', key: '', operator: 'matchesJsonPath', value: expr, not: false, caseInsensitive: false, subMatcher: sub, subValue: subVal })
+        }
+        matched = true
+        continue
+      }
+      for (const op of ['equalTo','doesNotEqual','contains','doesNotContain','startsWith','endsWith','matches','doesNotMatch','equalToJson']) {
         if ((bp as any)[op] !== undefined) {
           const val = (bp as any)[op]
-          filters.push({ type: 'body', key: op === 'matchesJsonPath' ? 'jsonPath' : '', operator: op, value: typeof val === 'string' ? val : JSON.stringify(val), not: false })
+          filters.push({ type: 'body', key: '', operator: op, value: typeof val === 'string' ? val : JSON.stringify(val), not: false, caseInsensitive: !!(bp as any).caseInsensitive })
+          matched = true
           break
         }
+      }
+      if (!matched && (bp as any).absent !== undefined) {
+        filters.push({ type: 'body', key: '', operator: 'absent', value: '', not: false, caseInsensitive: false })
       }
     }
   }
@@ -101,7 +129,7 @@ function loadStub(s: StubMapping) {
 
 function resetForm() {
   form.value = {
-    name: '', method: 'GET', urlType: 'url', url: '/', prefix: '', stripPrefix: '',
+    name: '', description: '', method: 'GET', urlType: 'url', url: '/', prefix: '', stripPrefix: '',
     respMode: 'direct', status: 200, contentType: 'application/json',
     responseBody: '{\n  "message": "success",\n  "code": 0,\n  "data": {}\n}',
     faultType: 'CONNECTION_RESET_BY_PEER', proxyBaseUrl: '',
@@ -125,8 +153,38 @@ function buildStub(): StubMapping {
   const bodyPatterns: any[] = []
   for (const f of validFilters) {
     const pattern: any = {}
-    if (f.operator === 'absent') pattern[f.operator] = true
-    else pattern[f.operator] = f.value
+    if (f.operator === 'absent') {
+      pattern.absent = true
+    } else if (f.operator === 'startsWith') {
+      const escaped = f.value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+      pattern.matches = '^' + escaped + '.*'
+    } else if (f.operator === 'endsWith') {
+      const escaped = f.value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+      pattern.matches = '.*' + escaped + '$'
+    } else if (f.operator === 'doesNotContain') {
+      const escaped = f.value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+      pattern.doesNotMatch = '.*' + escaped + '.*'
+    } else if (f.operator === 'doesNotEqual') {
+      const escaped = f.value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+      pattern.doesNotMatch = '^' + escaped + '$'
+    } else if (f.operator === 'matchesJsonPath') {
+      // JSON Path 展开格式：支持 expression + 子匹配器
+      const subMatcher = (f as any).subMatcher as string | undefined
+      const subValue = (f as any).subValue as string | undefined
+      if (subMatcher && subMatcher !== 'absent') {
+        pattern.matchesJsonPath = { expression: f.value, [subMatcher]: subValue }
+      } else if (subMatcher === 'absent') {
+        pattern.matchesJsonPath = { expression: f.value, absent: true }
+      } else {
+        pattern.matchesJsonPath = f.value
+      }
+    } else {
+      pattern[f.operator] = f.value
+    }
+    // 忽略大小写
+    if ((f as any).caseInsensitive) {
+      pattern.caseInsensitive = true
+    }
 
     if (f.type === 'header') {
       if (!request.headers) request.headers = {}
@@ -162,12 +220,30 @@ function buildStub(): StubMapping {
     const g = groupsStore.groups.find(g => g.id === form.value.selectedGroupId)
     if (g) { metadata.groupId = g.id; metadata.groupName = g.name }
   }
+  if (form.value.description) metadata.description = form.value.description
   if (form.value.prefix) metadata.prefix = form.value.prefix
   if (form.value.stripPrefix) metadata.stripPrefix = form.value.stripPrefix
   return { ...(props.stub?.id ? { id: props.stub.id } : {}), ...(props.stub?.uuid ? { uuid: props.stub.uuid } : {}), name: form.value.name || undefined, priority: form.value.priority, request, response, metadata }
 }
 
-function handleSave() { if (form.value.url.trim()) emit('save', buildStub()) }
+/**
+ * 保存时先获取最新 metadata，保留 Playground 中保存的 testRequest，防止被覆盖
+ */
+async function handleSavePreservingTestRequest() {
+  if (!form.value.url.trim()) return
+  const stub = buildStub()
+  // 从 WireMock 获取最新 metadata，确保 testRequest 不被覆盖
+  const stubId = (props.stub?.uuid || props.stub?.id)
+  if (stubId) {
+    try {
+      const { data: latest } = await client.get(`/mappings/${stubId}`)
+      if (latest?.metadata?.testRequest) {
+        stub.metadata = { ...(stub.metadata || {}), testRequest: latest.metadata.testRequest }
+      }
+    } catch { /* ignore */ }
+  }
+  emit('save', stub)
+}
 
 // JSON 预览
 const previewVisible = ref(false)
@@ -180,8 +256,23 @@ onMounted(() => {
   jsonTheme.value = document.documentElement.classList.contains('dark') ? 'dark' : 'light'
 })
 
-function openPreview() {
+/** 预览打开的瞬间缓存下来的 testRequest，用于编辑 JSON 保存时不丢失 */
+const cachedTestRequest = ref<any>(null)
+
+async function openPreview() {
   const stub = buildStub()
+  // 从 WireMock 拉取最新 testRequest，显示在预览 JSON 中
+  const stubId = (props.stub?.uuid || props.stub?.id)
+  cachedTestRequest.value = null
+  if (stubId) {
+    try {
+      const { data: latest } = await client.get(`/mappings/${stubId}`)
+      if (latest?.metadata?.testRequest) {
+        cachedTestRequest.value = latest.metadata.testRequest
+        stub.metadata = { ...(stub.metadata || {}), testRequest: latest.metadata.testRequest }
+      }
+    } catch { /* ignore */ }
+  }
   previewJson.value = JSON.stringify(stub, null, 2)
   try { previewParsed.value = JSON.parse(previewJson.value) } catch { previewParsed.value = null }
   previewTab.value = 'preview'
@@ -212,11 +303,11 @@ function handlePreviewSave() {
       if (!pats) return
       for (const [k, v] of Object.entries(pats)) {
         const pattern = v as any
-        if (typeof pattern === 'string') filters.push({ type, key: k, operator: 'equalTo', value: pattern, not: false })
+        if (typeof pattern === 'string') filters.push({ type, key: k, operator: 'equalTo', value: pattern, not: false, caseInsensitive: false })
         else if (pattern && typeof pattern === 'object') {
-          for (const op of ['equalTo','contains','matches','doesNotMatch','absent']) {
+          for (const op of ['equalTo','doesNotEqual','contains','doesNotContain','matches','doesNotMatch','absent']) {
             if (op in pattern) {
-              filters.push({ type, key: k, operator: op, value: op === 'absent' ? '' : String(pattern[op] || ''), not: false })
+              filters.push({ type, key: k, operator: op, value: op === 'absent' ? '' : String(pattern[op] || ''), not: false, caseInsensitive: !!pattern.caseInsensitive })
               break
             }
           }
@@ -228,12 +319,35 @@ function handlePreviewSave() {
     parsePats(req.cookies, 'cookie')
     if (req.bodyPatterns) {
       for (const bp of req.bodyPatterns) {
-        for (const op of ['equalToJson','matchesJsonPath','contains','matches']) {
+        let matched = false
+        // 检查 matchesJsonPath（可能为字符串或对象）
+        if ((bp as any).matchesJsonPath !== undefined) {
+          const mjp = (bp as any).matchesJsonPath
+          if (typeof mjp === 'string') {
+            filters.push({ type: 'body', key: '', operator: 'matchesJsonPath', value: mjp, not: false, caseInsensitive: false, subMatcher: '', subValue: '' })
+          } else if (mjp && typeof mjp === 'object') {
+            const expr = mjp.expression || ''
+            const subKeys = ['equalTo','equalToJson','contains','doesNotContain','matches','absent']
+            let sub = '' as string, subVal = '' as string
+            for (const sk of subKeys) {
+              if (mjp[sk] !== undefined) { sub = sk; subVal = sk === 'absent' ? '' : String(mjp[sk] || ''); break }
+            }
+            filters.push({ type: 'body', key: '', operator: 'matchesJsonPath', value: expr, not: false, caseInsensitive: false, subMatcher: sub, subValue: subVal })
+          }
+          matched = true
+          continue
+        }
+        for (const op of ['equalTo','doesNotEqual','contains','doesNotContain','startsWith','endsWith','matches','doesNotMatch','equalToJson']) {
           if (bp[op] !== undefined) {
             const val = bp[op]
-            filters.push({ type: 'body', key: op === 'matchesJsonPath' ? 'jsonPath' : '', operator: op, value: typeof val === 'string' ? val : JSON.stringify(val), not: false })
+            const key = op === 'matchesJsonPath' ? 'jsonPath' : ''
+            filters.push({ type: 'body', key, operator: op, value: typeof val === 'string' ? val : JSON.stringify(val), not: false, caseInsensitive: !!(bp as any).caseInsensitive })
+            matched = true
             break
           }
+        }
+        if (!matched && (bp as any).absent !== undefined) {
+          filters.push({ type: 'body', key: '', operator: 'absent', value: '', not: false, caseInsensitive: false })
         }
       }
     }
@@ -248,16 +362,29 @@ function handlePreviewSave() {
     }
     f.responseHeaders = resp.headers ? Object.entries(resp.headers).filter(([k]) => k.toLowerCase() !== 'content-type').map(([k, v]) => ({ key: k, value: v as string })) : []
     f.fixedDelay = resp.fixedDelayMilliseconds ?? 0
+    f.description = (parsed.metadata?.description as string) || ''
     f.selectedGroupId = (parsed.metadata?.groupId as string) || ''
     f.prefix = (parsed.metadata?.prefix as string) || ''
     f.stripPrefix = (parsed.metadata?.stripPrefix as string) || ''
 
     previewVisible.value = false
-    // 立即保存
-    emit('save', buildStub())
+    // 立即保存，保留 testRequest
+    const stub = buildStub()
+    if (cachedTestRequest.value) {
+      stub.metadata = { ...(stub.metadata || {}), testRequest: cachedTestRequest.value }
+    }
+    emit('save', stub)
   } catch (e: any) {
     MessagePlugin.error('JSON 解析失败: ' + (e.message || '格式错误'))
   }
+}
+
+function handleCopy() {
+  const copy = buildStub()
+  delete (copy as any).id
+  delete (copy as any).uuid
+  copy.name = (copy.name || 'mock') + ' - 副本'
+  emit('copyAsNew', copy)
 }
 
 async function handleTestRequest() {
@@ -299,7 +426,7 @@ async function handleTestRequest() {
 </script>
 
 <template>
-  <t-drawer v-if="!inline" v-model:visible="visible" :header="isNew ? '新建 Mock 规则' : '编辑 Mock 规则'" size="700px" :footer="true" :confirm-btn="{ content: '保存', theme: 'primary' }" :cancel-btn="isNew ? '取消' : '删除'" @confirm="handleSave" @cancel="isNew ? emit('cancel') : emit('delete')">
+  <t-drawer v-if="!inline" v-model:visible="visible" :header="isNew ? '新建 Mock 规则' : '编辑 Mock 规则'" size="700px" :footer="true" :confirm-btn="{ content: '保存', theme: 'primary' }" :cancel-btn="isNew ? '取消' : '删除'" @confirm="handleSavePreservingTestRequest" @cancel="isNew ? emit('cancel') : emit('delete')">
     <t-form label-width="96px" class="stub-form"><StubForm v-model:form="form" /></t-form>
   </t-drawer>
 
@@ -307,13 +434,16 @@ async function handleTestRequest() {
     <div class="inline-header"><span class="inline-title">{{ isNew ? '新建 Mock 规则' : '编辑 Mock 规则' }}</span><t-button size="small" variant="text" @click="emit('cancel')"><t-icon name="close" /></t-button></div>
     <t-form label-width="96px" class="stub-form"><StubForm v-model:form="form" /></t-form>
     <div class="inline-footer">
-      <t-button theme="primary" @click="handleSave">保存</t-button>
+      <t-button theme="primary" @click="handleSavePreservingTestRequest">保存</t-button>
       <t-button @click="emit('cancel')">取消</t-button>
       <t-button theme="default" @click="handleTestRequest">
         <template #icon><t-icon name="play-circle" /></template>测试
       </t-button>
       <t-button theme="default" @click="openPreview">
         <template #icon><t-icon name="code" /></template>预览 JSON
+      </t-button>
+      <t-button v-if="!isNew" theme="warning" @click="handleCopy">
+        <template #icon><t-icon name="file-copy" /></template>复制
       </t-button>
       <div class="spacer" />
       <t-popconfirm v-if="!isNew" content="确定删除该 Mock 规则？" @confirm="emit('delete')">
