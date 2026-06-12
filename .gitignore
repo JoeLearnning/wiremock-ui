@@ -4,6 +4,12 @@ node_modules/
 # Build output
 dist/
 
+# Scripts
+restart-ui.bat
+
+# WireMock data
+wiremock/
+
 # Editor
 .vscode/
 .idea/

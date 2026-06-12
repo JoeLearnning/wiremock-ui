@@ -47,8 +47,10 @@ export const useMappingsStore = defineStore('mappings', () => {
       )
 
       if (filtered.length === 0 && allMappings.length === 0) {
-        // WireMock 完全为空时，先添加一条默认 stub
+        // WireMock 完全为空时，先添加一条默认 stub（用系统 UUID 确保 UI 中隐藏）
         const defaultStub: StubMapping = {
+          uuid: SYSTEM_MOCK_UUID,
+          id: SYSTEM_MOCK_UUID,
           name: 'wiremock-ui自动生成，请勿删除',
           request: {
             method: 'GET',
@@ -62,9 +64,7 @@ export const useMappingsStore = defineStore('mappings', () => {
           persistent: true
         }
         // 创建默认 stub
-        const created = await mappingsApi.createMapping(defaultStub)
-        // 再调用更新
-        await mappingsApi.updateMapping(created.uuid || created.id!, created)
+        await mappingsApi.createMapping(defaultStub)
         // 更新后重新获取列表，并触发延时持久化
         const res2 = await mappingsApi.getAllMappings()
         mappings.value = (res2.mappings || []).filter(

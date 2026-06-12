@@ -1,3 +1,5 @@
+resolver 127.0.0.11 ipv6=off valid=10s;
+
 server {
     listen       80;
     server_name  localhost;
@@ -5,7 +7,7 @@ server {
     root   /usr/share/nginx/html;
     index  index.html;
 
-    set $backend_wiremock "http://wiremock:8080";
+    set $backend_wiremock "http://${WIREMOCK_HOST}:${WIREMOCK_PORT}";
 
     # 代理 WireMock Admin API
     location /__admin/ {

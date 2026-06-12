@@ -1,20 +1,49 @@
+version: "3"
+
 services:
   wiremock:
-    image: wiremock/wiremock:latest
-    container_name: wiremock
+    image: wiremock/wiremock:3.13.2-2
+    container_name: wiremock-server
+    restart: unless-stopped
     ports:
       - "8080:8080"
     volumes:
+      # 可根据需要改为绝对路径或相对路径
       - ./wiremock/mappings:/home/wiremock/mappings
       - ./wiremock/__files:/home/wiremock/__files
     command: ["--global-response-templating", "--enable-stub-cors", "--verbose"]
+    # 内存限制 - 解决 OOM 导致容器被杀的问题
+    mem_limit: 1g
+    memswap_limit: 2g
+    # Java 内存优化
+    environment:
+      - JAVA_OPTS=-XX:MaxRAMPercentage=80.0 -XX:InitialRAMPercentage=40.0 -XX:+UseG1GC
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080/__admin"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    # 记录更详细的日志
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   wiremock-ui:
-    build: .
+    image: joelearnning/wiremock-ui:latest
     container_name: wiremock-ui
     ports:
       - "8081:80"
+    environment:
+      - WIREMOCK_HOST=wiremock
+      - WIREMOCK_PORT=8080
     depends_on:
       - wiremock
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"

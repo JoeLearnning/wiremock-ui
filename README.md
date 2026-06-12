@@ -64,39 +64,86 @@ npm run build
 
 ## Docker 部署
 
+### docker run（单容器，WireMock 另起）
+
+```bash
+docker run -d \
+  --name wiremock-ui \
+  -p 8081:80 \
+  -e WIREMOCK_HOST=host.docker.internal \
+  -e WIREMOCK_PORT=8080 \
+  joelearnning/wiremock-ui:latest
+```
+
+> 通过环境变量
+ `WIREMOCK_HOST` / `WIREMOCK_PORT` 指定 WireMock 服务地址，Nginx 启动时自动替换配置。
+
+### 使用指定版本
+
+```bash
+docker run -d --name wiremock-ui -p 8081:80 \
+  -e WIREMOCK_HOST=192.168.1.100 -e WIREMOCK_PORT=8080 \
+  joelearnning/wiremock-ui:v1.1.0
+```
+
 ### 构建镜像
 
 ```bash
-docker build -t wiremock-ui .
+docker build --no-cache -t joelearnning/wiremock-ui:v1.1.0 -t joelearnning/wiremock-ui:latest .
 ```
 
-### Docker Compose（推荐）
+### Docker Compose（推荐，完整部署 WireMock + UI）
 
 ```yaml
 # docker-compose.yml
 services:
   wiremock:
-    image: wiremock/wiremock:latest
-    container_name: wiremock
+    image: wiremock/wiremock:3.13.2-2
+    container_name: wiremock-server
+    restart: unless-stopped
     ports:
       - "8080:8080"
     volumes:
       - ./wiremock/mappings:/home/wiremock/mappings
       - ./wiremock/__files:/home/wiremock/__files
     command: ["--global-response-templating", "--enable-stub-cors", "--verbose"]
+    environment:
+      - JAVA_OPTS=-XX:MaxRAMPercentage=80.0 -XX:InitialRAMPercentage=40.0 -XX:+UseG1GC
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080/__admin"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   wiremock-ui:
-    build: .
+    image: joelearnning/wiremock-ui:latest
     container_name: wiremock-ui
     ports:
       - "8081:80"
+    environment:
+      - WIREMOCK_HOST=wiremock
+      - WIREMOCK_PORT=8080
     depends_on:
       - wiremock
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 ```
 
 ```bash
 docker compose up -d
 ```
+
+> **说明**：容器内 Nginx 通过 Docker 内置 DNS resolver（`127.0.0.11`）在运行时解析 `$WIREMOCK_HOST:$WIREMOCK_PORT`。`depends_on.condition: service_healthy` 确保 WireMock 就绪后才启动 UI。
 
 访问 `http://localhost:8081` 即可。
 
