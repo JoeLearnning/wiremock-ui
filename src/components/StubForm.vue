@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { watch } from 'vue'
+import { watch, ref } from 'vue'
 import { useGroupsStore } from '@/stores/groups'
 import JsonEditor from './JsonEditor.vue'
 
@@ -64,6 +64,29 @@ function getHeaderValueOptions(key: string): string[] {
   return headerValueMap[key] || []
 }
 
+const BODY_TYPES = [
+  { value: 'json', label: 'JSON' },
+  { value: 'xml', label: 'XML' },
+  { value: 'text', label: 'TEXT (纯文本)' },
+  { value: 'html', label: 'HTML' },
+  { value: 'base64', label: 'BASE64 (二进制)' },
+]
+const bodyTypeToContentType: Record<string, string> = {
+  json: 'application/json',
+  xml: 'application/xml',
+  text: 'text/plain; charset=utf-8',
+  html: 'text/html; charset=utf-8',
+  base64: 'application/octet-stream',
+}
+const contentTypeToBodyType: Record<string, string> = {
+  'application/json': 'json',
+  'text/xml': 'xml',
+  'application/xml': 'xml',
+  'text/html': 'html',
+  'text/plain': 'text',
+  'application/octet-stream': 'base64',
+}
+
 const FILTER_TYPES = [
   { value: 'header', label: '请求头' },
   { value: 'query', label: '查询参数' },
@@ -110,11 +133,47 @@ function getOperators(filterType: string): { value: string; label: string; hasCa
 
 const form = defineModel<any>('form', { required: true })
 
+const fileInputRef = ref<HTMLInputElement | null>(null)
+const selectedFileName = ref('')
+
+function onFileSelected(e: Event) {
+  const input = e.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (!file) return
+  selectedFileName.value = file.name
+  const reader = new FileReader()
+  reader.onload = () => {
+    const result = reader.result as string
+    // FileReader readAsDataURL 返回 data:...;base64,... 格式，去掉前缀
+    const base64 = result.split(',')[1] || result
+    form.value.responseBody = base64
+    form.value.bodyType = 'base64'
+  }
+  reader.readAsDataURL(file)
+  // 重置 input 以便再次选择同一文件
+  input.value = ''
+}
+
 // 选择分组时自动填充前缀
 watch(() => form.value.selectedGroupId, (groupId) => {
   if (groupId) {
     const g = groupsStore.groups.find(g => g.id === groupId)
     if (g?.prefix) form.value.prefix = g.prefix
+  }
+})
+
+// 切换 bodyType 时自动更新 Content-Type（form.contentType + 响应头中的 Content-Type）
+watch(() => form.value.bodyType, (bt, oldBt) => {
+  if (bt && bodyTypeToContentType[bt]) {
+    form.value.contentType = bodyTypeToContentType[bt]
+    const ctHeader = form.value.responseHeaders.find((h: any) => h.key.toLowerCase() === 'content-type')
+    if (ctHeader) {
+      ctHeader.value = bodyTypeToContentType[bt]
+    }
+  }
+  // 从 base64 切换到其他类型时清空响应体
+  if (oldBt === 'base64' && bt !== 'base64') {
+    form.value.responseBody = ''
   }
 })
 
@@ -130,13 +189,23 @@ function getRespHeaderValueOptions(key: string): string[] {
 function onRespHeaderKeyChange(h: any) {
   h.value = ''
 }
+function onRespHeaderValueChange(h: any) {
+  // 用户修改 Content-Type 值 → 同步 bodyType
+  if (h.key.toLowerCase() === 'content-type') {
+    const base = (h.value || '').split(';')[0].trim()
+    if (contentTypeToBodyType[base]) {
+      form.value.bodyType = contentTypeToBodyType[base]
+    }
+    form.value.contentType = h.value
+  }
+}
+function onFilterTypeChange(f: any) {
+  if (f.operator === 'absent') f.value = ''
+}
 
 // 请求筛选
 function addFilter() { form.value.filters.push({ type: 'header', key: '', operator: 'equalTo', value: '', not: false, caseInsensitive: false }) }
 function removeFilter(i: number) { form.value.filters.splice(i, 1) }
-function onFilterTypeChange(f: any) {
-  if (f.operator === 'absent') f.value = ''
-}
 function onOperatorChange(f: any) {
   if (f.operator === 'absent') {
     f.value = ''
@@ -243,14 +312,12 @@ function onFilterKeyChange(f: any) {
   </div>
   <template v-if="form.respMode === 'direct'">
     <t-form-item label="状态码"><t-input-number v-model="form.status" :min="100" :max="599" :style="{ width: '120px' }" /></t-form-item>
-    <t-form-item label="Content-Type"><t-select v-model="form.contentType" :style="{ width: '200px' }"><t-option value="application/json" label="application/json" /><t-option value="text/xml" label="text/xml" /><t-option value="application/xml" label="application/xml" /><t-option value="text/html" label="text/html; charset=utf-8" /><t-option value="text/plain" label="text/plain; charset=utf-8" /></t-select></t-form-item>
-    <t-form-item label="响应体"><JsonEditor v-model="form.responseBody" /></t-form-item>
     <t-form-item label="响应头">
       <div class="w-full">
         <div v-for="(h, i) in form.responseHeaders" :key="i" class="resp-header-block">
           <div class="resp-header-row">
             <t-input v-model="h.key" placeholder="Key" :style="{ flex: '4 1 100px' }" @change="onRespHeaderKeyChange(h)" />
-            <t-input v-model="h.value" placeholder="Value" :style="{ flex: '6 1 150px' }" />
+            <t-input v-model="h.value" placeholder="Value" :style="{ flex: '6 1 150px' }" @change="onRespHeaderValueChange(h)" />
             <t-button theme="danger" variant="text" @click="removeResponseHeader(i)"><t-icon name="delete" /></t-button>
           </div>
           <!-- Key 建议 -->
@@ -259,10 +326,26 @@ function onFilterKeyChange(f: any) {
           </div>
           <!-- Value 建议 -->
           <div class="resp-header-suggest" v-if="h.key && getRespHeaderValueOptions(h.key).length && !h.value">
-            <span v-for="v in getRespHeaderValueOptions(h.key)" :key="v" class="suggest-chip" @click="h.value = v">{{ v }}</span>
+            <span v-for="v in getRespHeaderValueOptions(h.key)" :key="v" class="suggest-chip" @click="h.value = v; onRespHeaderValueChange(h)">{{ v }}</span>
           </div>
         </div>
         <t-button size="small" variant="dashed" @click="addResponseHeader"><template #icon><t-icon name="add" /></template>添加响应头</t-button>
+      </div>
+    </t-form-item>
+    <t-form-item label="Body 类型">
+      <t-radio-group v-model="form.bodyType" size="small">
+        <t-radio v-for="bt in BODY_TYPES" :key="bt.value" :value="bt.value">{{ bt.label }}</t-radio>
+      </t-radio-group>
+    </t-form-item>
+    <t-form-item label="响应体"><JsonEditor v-model="form.responseBody" :bodyType="form.bodyType" /></t-form-item>
+    <t-form-item label=" ">
+      <div class="file-import-row">
+        <input ref="fileInputRef" type="file" style="display:none" @change="onFileSelected" />
+        <t-button size="small" variant="outline" @click="fileInputRef?.click()">
+          <template #icon><t-icon name="file-excel" /></template>
+          选择文件（自动转为 Base64）
+        </t-button>
+        <span v-if="selectedFileName" class="file-name">{{ selectedFileName }}</span>
       </div>
     </t-form-item>
   </template>
@@ -415,5 +498,20 @@ function onFilterKeyChange(f: any) {
   border-radius: 6px 0 0 6px;
   white-space: nowrap;
   flex-shrink: 0;
+}
+
+.file-import-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.file-name {
+  font-size: 12px;
+  color: var(--td-brand-color);
+  font-family: monospace;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 </style>

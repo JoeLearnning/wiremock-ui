@@ -21,6 +21,7 @@ const isNew = computed(() => !(props.stub?.uuid || props.stub?.id))
 const form = ref({
   name: '', description: '', method: 'GET', urlType: 'url' as string, url: '', prefix: '', stripPrefix: '',
   respMode: 'direct' as string, status: 200, contentType: 'application/json',
+  bodyType: 'json' as string,
   responseBody: '{\n  "message": "success",\n  "code": 0,\n  "data": {}\n}',
   faultType: 'CONNECTION_RESET_BY_PEER', proxyBaseUrl: '',
   fixedDelay: 0, priority: 5,
@@ -115,7 +116,7 @@ function loadStub(s: StubMapping) {
   f.filters = filters
 
   f.selectedGroupId = (s.metadata?.groupId as string) || ''
-  f.responseHeaders = s.response?.headers ? Object.entries(s.response.headers).filter(([k]) => k.toLowerCase() !== 'content-type').map(([k, v]) => ({ key: k, value: v })) : []
+  f.responseHeaders = s.response?.headers ? Object.entries(s.response.headers).map(([k, v]) => ({ key: k, value: v })) : []
   if (s.response?.proxyBaseUrl) { f.respMode = 'proxy'; f.proxyBaseUrl = s.response.proxyBaseUrl; f.stripPrefix = (s.response as any).proxyUrlPrefixToRemove || '' }
   else if (s.response?.fault) { f.respMode = 'fault'; f.faultType = s.response.fault }
   else {
@@ -123,17 +124,32 @@ function loadStub(s: StubMapping) {
     const ct = (s.response?.headers?.['Content-Type'] || s.response?.headers?.['content-type'] || '').split(';')[0]
     if (['text/html','text/xml','application/xml','text/plain'].includes(ct)) f.contentType = ct
     else f.contentType = 'application/json'
+    // 根据 Content-Type 设置 bodyType
+    const ctBase = ct || 'application/json'
+    const ctToBt: Record<string, string> = {
+      'application/json': 'json', 'text/xml': 'xml', 'application/xml': 'xml',
+      'text/html': 'html', 'text/plain': 'text', 'application/octet-stream': 'base64',
+    }
+    f.bodyType = ctToBt[ctBase] || 'json'
     f.responseBody = s.response?.jsonBody ? JSON.stringify(s.response.jsonBody, null, 2) : (s.response?.body || '')
   }
 }
 
 function resetForm() {
+  const selectedGroupId = groupsStore.selectedGroupId || ''
+  const selectedGroup = selectedGroupId ? groupsStore.groups.find(g => g.id === selectedGroupId) : undefined
   form.value = {
     name: '', description: '', method: 'GET', urlType: 'url', url: '/', prefix: '', stripPrefix: '',
     respMode: 'direct', status: 200, contentType: 'application/json',
+    bodyType: 'json',
     responseBody: '{\n  "message": "success",\n  "code": 0,\n  "data": {}\n}',
     faultType: 'CONNECTION_RESET_BY_PEER', proxyBaseUrl: '',
-    fixedDelay: 0, priority: 5, filters: [], responseHeaders: [], selectedGroupId: '',
+    fixedDelay: 0, priority: 5, filters: [], responseHeaders: [{ key: 'Content-Type', value: 'application/json' }],
+    selectedGroupId,
+  }
+  // 选中分组时自动填充前缀（逻辑与 StubForm watch 一致）
+  if (selectedGroup?.prefix) {
+    form.value.prefix = selectedGroup.prefix
   }
 }
 
@@ -207,8 +223,12 @@ function buildStub(): StubMapping {
     if (form.value.stripPrefix) response.proxyUrlPrefixToRemove = form.value.stripPrefix
   } else if (form.value.respMode === 'fault') response.fault = form.value.faultType
   else {
-    response.status = form.value.status; response.headers = { 'Content-Type': form.value.contentType }
-    try { response.jsonBody = JSON.parse(form.value.responseBody) } catch { response.body = form.value.responseBody }
+    response.status = form.value.status; response.headers = {}
+    if (form.value.bodyType === 'json') {
+      try { response.jsonBody = JSON.parse(form.value.responseBody) } catch { response.body = form.value.responseBody }
+    } else {
+      response.body = form.value.responseBody
+    }
   }
   if (form.value.responseHeaders.filter((h: any) => h.key.trim()).length) {
     if (!response.headers) response.headers = {}
@@ -358,9 +378,15 @@ function handlePreviewSave() {
     else {
       f.respMode = 'direct'; f.status = resp.status ?? 200
       f.contentType = (resp.headers?.['Content-Type'] || resp.headers?.['content-type'] || 'application/json').split(';')[0]
+      const ctBase = f.contentType || 'application/json'
+      const ctToBt: Record<string, string> = {
+        'application/json': 'json', 'text/xml': 'xml', 'application/xml': 'xml',
+        'text/html': 'html', 'text/plain': 'text', 'application/octet-stream': 'base64',
+      }
+      f.bodyType = ctToBt[ctBase] || 'json'
       f.responseBody = resp.jsonBody ? JSON.stringify(resp.jsonBody, null, 2) : (resp.body || '')
     }
-    f.responseHeaders = resp.headers ? Object.entries(resp.headers).filter(([k]) => k.toLowerCase() !== 'content-type').map(([k, v]) => ({ key: k, value: v as string })) : []
+    f.responseHeaders = resp.headers ? Object.entries(resp.headers).map(([k, v]) => ({ key: k, value: v as string })) : []
     f.fixedDelay = resp.fixedDelayMilliseconds ?? 0
     f.description = (parsed.metadata?.description as string) || ''
     f.selectedGroupId = (parsed.metadata?.groupId as string) || ''

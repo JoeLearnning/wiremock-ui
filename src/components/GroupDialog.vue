@@ -78,6 +78,7 @@ function handleConfirm() {
       </t-form-item>
       <t-form-item label="URL 前缀">
         <t-input v-model="prefix" placeholder="例如：/api/v1（该分组下 stub 将自动添加此前缀）" />
+        <template #help><span class="prefix-hint">编辑前缀时会同步更新该分组下所有 Mock 规则的前缀</span></template>
       </t-form-item>
       <t-form-item label="描述">
         <t-textarea
@@ -89,3 +90,10 @@ function handleConfirm() {
     </t-form>
   </t-dialog>
 </template>
+
+<style scoped>
+.prefix-hint {
+  font-size: 12px;
+  color: var(--td-warning-color);
+}
+</style>

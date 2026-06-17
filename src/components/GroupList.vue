@@ -2,10 +2,13 @@
 import { ref, computed } from 'vue'
 import { MessagePlugin, DialogPlugin } from 'tdesign-vue-next'
 import { useGroupsStore } from '@/stores/groups'
+import { useMappingsStore } from '@/stores/mappings'
+import * as mappingsApi from '@/api/mappings'
 import GroupDialog from './GroupDialog.vue'
 import type { GroupInfo } from '@/api/types'
 
 const groupsStore = useGroupsStore()
+const mappingsStore = useMappingsStore()
 
 const showDialog = ref(false)
 const editingGroupId = ref<string | null>(null)
@@ -56,20 +59,39 @@ function handleEdit(id: string) {
 
 async function handleDelete(id: string) {
   const childCount = getChildren(id).length
+  const descendantIds = groupsStore.getDescendantIds(id)
+  // 收集该分组及其所有子分组下的 stub ID
+  const affectedGroups = groupsStore.groups.filter(g => descendantIds.includes(g.id))
+  const allStubIds = affectedGroups.flatMap(g => g.stubIds).filter(Boolean)
+  const stubCount = allStubIds.length
   
   const instance = DialogPlugin.confirm({
-    body: childCount > 0 
-      ? `确定删除该分组及其所有子分组？分组下的 Mock 规则不会被删除。`
-      : '确定删除该分组？分组下的 Mock 规则不会被删除。',
+    body: childCount > 0
+      ? `该分组包含 ${childCount} 个子分组，${stubCount > 0 ? `旗下共 ${stubCount} 条 Mock 规则。` : ''}确定删除？删除分组会同时删除分组下所有的 Mock 规则。`
+      : stubCount > 0
+        ? `该分组下有 ${stubCount} 条 Mock 规则。确定删除？删除分组会同时删除分组下所有的 Mock 规则。`
+        : '确定删除该分组？',
     confirmBtn: {
       content: '确定',
       theme: 'danger'
     },
     cancelBtn: '取消',
-    onConfirm: () => {
+    onConfirm: async () => {
       instance.destroy()
+      // 逐个删除 stub
+      for (const stubId of allStubIds) {
+        try {
+          await mappingsApi.deleteMapping(stubId)
+        } catch (e: any) {
+          console.warn(`删除 stub ${stubId} 失败:`, e.message)
+        }
+      }
+      // 删除分组
       groupsStore.deleteGroup(id)
-      MessagePlugin.success('分组已删除')
+      // 刷新 mock 列表
+      await mappingsStore.fetchMappings()
+      groupsStore.syncFromStubs(mappingsStore.mappings)
+      MessagePlugin.success(`分组已删除${stubCount > 0 ? `，已同步删除 ${stubCount} 条 Mock 规则` : ''}`)
     },
     onCancel: () => {
       instance.destroy()
@@ -82,8 +104,53 @@ async function handleDelete(id: string) {
 
 async function handleDialogConfirm(data: { name: string; description: string; parentId?: string; prefix?: string }) {
   if (editingGroupId.value) {
+    // 编辑：记录原分组信息，再更新
+    const oldGroup = groupsStore.groups.find(g => g.id === editingGroupId.value)
+    const oldPrefix = oldGroup?.prefix || ''
+    const newPrefix = data.prefix || ''
+
     await groupsStore.updateGroup(editingGroupId.value, data)
-    MessagePlugin.success('分组已更新')
+
+    // 前缀有变化 → 更新该分组下所有 stub 的 URL 前缀
+    if (oldPrefix !== newPrefix && oldGroup) {
+      const affectedStubIds = oldGroup.stubIds
+      let updatedCount = 0
+      if (affectedStubIds.length) {
+        for (const stubId of affectedStubIds) {
+          try {
+            const stub = await mappingsApi.getMapping(stubId)
+            if (!stub) continue
+            // 更新 URL 字段：替换前缀
+            const req = stub.request
+            if (!req) continue
+            let changed = false
+            for (const key of ['url', 'urlPath', 'urlPathPattern', 'urlPattern'] as const) {
+              const val = req[key]
+              if (val && oldPrefix && val.startsWith(oldPrefix)) {
+                req[key] = newPrefix + val.slice(oldPrefix.length)
+                changed = true
+              }
+            }
+            // 更新 metadata.prefix
+            if (stub.metadata) {
+              (stub.metadata as any).prefix = newPrefix || undefined
+            }
+            if (changed) {
+              await mappingsApi.updateMapping(stubId, stub)
+              updatedCount++
+            }
+          } catch (e: any) {
+            console.warn(`更新 stub ${stubId} 前缀失败:`, e.message)
+          }
+        }
+      }
+      // 重新加载 mappings 列表和分组关联
+      await mappingsStore.fetchMappings()
+      groupsStore.syncFromStubs(mappingsStore.mappings)
+      MessagePlugin.success(`分组已更新，已同步更新 ${updatedCount} 条规则的前缀`)
+    } else {
+      MessagePlugin.success('分组已更新')
+    }
   } else {
     const group = await groupsStore.addGroup(data.name, data.description, data.parentId, data.prefix)
     groupsStore.selectGroup(group.id)
