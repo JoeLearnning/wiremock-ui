@@ -15,6 +15,7 @@ const openPlayground = inject<(config?: any) => void>('openPlayground')!
 const editingStub = ref<StubMapping | null>(null)
 const creatingNew = ref(false)
 const activeTab = ref('stubs')
+const sidebarVisible = ref(true)
 
 onMounted(async () => {
   try {
@@ -70,14 +71,22 @@ async function handleDelete() {
 <template>
   <div class="dashboard">
     <!-- 左侧分组栏 -->
-    <aside class="sidebar">
+    <aside v-if="sidebarVisible" class="sidebar">
       <GroupList />
     </aside>
 
-    <!-- 右侧主区域 -->
+    <!-- 侧栏收起时的小按钮 -->
+    <div v-if="!sidebarVisible" class="sidebar-collapsed-toggle" @click="sidebarVisible = true" title="显示分组栏">
+      <t-icon name="folder" size="16px" />
+    </div>
+
+    <!-- 主区域 -->
     <main class="main-area">
       <header class="top-bar">
         <div class="top-bar-left">
+          <t-button variant="text" shape="square" @click="sidebarVisible = !sidebarVisible" class="sidebar-toggle" :title="sidebarVisible ? '隐藏分组栏' : '显示分组栏'">
+            <t-icon :name="sidebarVisible ? 'chevron-left' : 'chevron-right'" size="16px" />
+          </t-button>
           <span class="logo">
             <t-icon name="server" size="20px" />
             <span class="logo-text">WireMock UI</span>
@@ -125,7 +134,24 @@ async function handleDelete() {
 
 <style scoped>
 .dashboard { height: 100%; display: flex; overflow: hidden; }
-.sidebar { width: 280px; background: var(--td-bg-color-container); border-right: 1px solid var(--td-component-stroke); display: flex; flex-direction: column; flex-shrink: 0; }
+.sidebar { width: 280px; background: var(--td-bg-color-container); border-right: 1px solid var(--td-component-stroke); display: flex; flex-direction: column; flex-shrink: 0; overflow: hidden; }
+.sidebar-toggle { flex-shrink: 0; }
+.sidebar-collapsed-toggle {
+  width: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  background: var(--td-bg-color-container);
+  border-right: 1px solid var(--td-component-stroke);
+  flex-shrink: 0;
+  color: var(--td-text-color-secondary);
+  transition: background 0.2s;
+}
+.sidebar-collapsed-toggle:hover {
+  background: var(--td-bg-color-container-hover);
+  color: var(--td-brand-color);
+}
 .main-area { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
 .top-bar { height: 56px; display: flex; align-items: center; justify-content: space-between; padding: 0 16px; background: var(--td-bg-color-container); border-bottom: 1px solid var(--td-component-stroke); flex-shrink: 0; }
 .top-bar-left { flex: 0 0 auto; display: flex; align-items: center; gap: 16px; }

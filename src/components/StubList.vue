@@ -9,11 +9,19 @@ const emit = defineEmits<{ edit: [stub: StubMapping]; create: [] }>()
 
 const groupsStore = useGroupsStore()
 const mappingsStore = useMappingsStore()
+const UNGROUPED_ID = '__ungrouped__'
+
 const searchKeyword = ref('')
 
 const filteredStubs = computed(() => {
   let list = props.stubs
-  if (groupsStore.selectedGroupId) {
+  if (groupsStore.selectedGroupId === UNGROUPED_ID) {
+    const allStubIds = new Set(groupsStore.groups.flatMap(g => g.stubIds))
+    list = list.filter(s => {
+      const sid = s.uuid || s.id || ''
+      return sid && !allStubIds.has(sid)
+    })
+  } else if (groupsStore.selectedGroupId) {
     const group = groupsStore.selectedGroup
     if (group) list = list.filter(s => group.stubIds.includes(s.uuid || s.id || ''))
   }
@@ -56,6 +64,9 @@ function getGroupName(s: StubMapping): string {
         </t-input>
         <t-tag v-if="groupsStore.selectedGroup" theme="primary" variant="light" closable @close="groupsStore.selectGroup('')">
           {{ groupsStore.selectedGroup.name }}
+        </t-tag>
+        <t-tag v-else-if="groupsStore.selectedGroupId === UNGROUPED_ID" theme="primary" variant="light" closable @close="groupsStore.selectGroup('')">
+          未分组
         </t-tag>
       </div>
       <div class="flex-center gap-8">

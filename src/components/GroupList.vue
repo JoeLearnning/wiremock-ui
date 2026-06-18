@@ -10,6 +10,8 @@ import type { GroupInfo } from '@/api/types'
 const groupsStore = useGroupsStore()
 const mappingsStore = useMappingsStore()
 
+const UNGROUPED_ID = '__ungrouped__'
+
 const showDialog = ref(false)
 const editingGroupId = ref<string | null>(null)
 const pendingParentId = ref<string>('')
@@ -34,6 +36,22 @@ function getChildren(parentId: string): GroupInfo[] {
 
 function hasChildren(groupId: string): boolean {
   return getChildren(groupId).length > 0
+}
+
+function onGroupClick(id: string) {
+  if (id === UNGROUPED_ID) {
+    groupsStore.selectGroup(UNGROUPED_ID)
+  } else {
+    groupsStore.selectGroup(id)
+  }
+}
+
+function getUngroupedCount(): number {
+  const allStubIds = new Set(groupsStore.groups.flatMap(g => g.stubIds))
+  return mappingsStore.mappings.filter(s => {
+    const sid = s.uuid || s.id || ''
+    return sid && !allStubIds.has(sid)
+  }).length
 }
 
 function getDepth(group: GroupInfo): number {
@@ -193,6 +211,21 @@ interface FlatGroupItem {
 const flatGroups = computed<FlatGroupItem[]>(() => {
   const result: FlatGroupItem[] = []
   
+  // 计算未分组的 stub 数量
+  const allStubIds = new Set(groupsStore.groups.flatMap(g => g.stubIds))
+  const ungroupedCount = mappingsStore.mappings.filter(s => {
+    const sid = s.uuid || s.id || ''
+    return sid && !allStubIds.has(sid)
+  }).length
+  
+  // 未分组虚拟条目
+  result.push({
+    group: { id: UNGROUPED_ID, name: '未分组', stubIds: [] } as any,
+    depth: 0,
+    hasChild: false,
+    isExpanded: false
+  })
+  
   function traverse(parentId: string | undefined, depth: number) {
     const groups = parentId 
       ? groupsStore.groups.filter(g => g.parentId === parentId)
@@ -252,19 +285,20 @@ const flatGroups = computed<FlatGroupItem[]>(() => {
       </t-button>
       <div v-else class="expand-placeholder"></div>
       
-      <div class="group-item-main" @click="groupsStore.selectGroup(item.group.id)">
-        <t-icon name="folder" class="group-icon" />
+      <div class="group-item-main" @click="onGroupClick(item.group.id)">
+        <t-icon :name="item.group.id === UNGROUPED_ID ? 'layers' : 'folder'" class="group-icon" />
         <div class="group-info">
           <div class="group-name">{{ item.group.name }}</div>
           <div v-if="item.group.prefix" class="group-prefix">{{ item.group.prefix }}</div>
           <div v-if="item.group.description" class="group-desc">{{ item.group.description }}</div>
           <div class="group-meta">
-            <span v-if="item.group.stubIds.length">{{ item.group.stubIds.length }} 条规则</span>
+            <span v-if="item.group.id === UNGROUPED_ID">{{ getUngroupedCount() }} 条规则</span>
+            <span v-else-if="item.group.stubIds.length">{{ item.group.stubIds.length }} 条规则</span>
           </div>
         </div>
       </div>
       
-      <div class="group-actions" @click.stop>
+      <div v-if="item.group.id !== UNGROUPED_ID" class="group-actions" @click.stop>
         <t-button
           size="small"
           variant="text"

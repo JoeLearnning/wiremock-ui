@@ -206,17 +206,19 @@ watch(() => form.value.bodyType, (bt, oldBt) => {
   }
 })
 
-// 选中任意 URL → 转为路径与查询正则，自动填充匹配全部的正则表达式
+// 选中任意 URL → 清空 URL 显示提示，保存时由 buildStub 自动构造正则
 watch(() => form.value.urlType, (urlType) => {
   if (urlType === 'anyUrl') {
-    const pfx = form.value.prefix || ''
-    form.value.url = pfx ? pfx.replace(/\/+$/, '') + '/.*' : '.*'
+    form.value.url = ''
   }
 })
 
 function getUrlPlaceholder() {
   const map: Record<string, string> = { url: '/api/user/info', urlPath: '/api/user', urlPathPattern: '/api/.*', urlPattern: '.*/api/user/.*' }
-  if (form.value.urlType === 'anyUrl') return '匹配所有请求，无需输入 URL'
+  if (form.value.urlType === 'anyUrl') {
+    const pfx = form.value.prefix || ''
+    return pfx ? `任意 URL（前缀 ${pfx}，匹配该前缀下所有请求）` : '任意 URL（匹配所有请求）'
+  }
   return map[form.value.urlType] || ''
 }
 function addResponseHeader() { form.value.responseHeaders.push({ key: '', value: '' }) }
@@ -404,7 +406,15 @@ function onFilterKeyChange(f: any) {
   </div>
   <template v-if="form.respMode === 'proxy'">
     <t-form-item label="代理目标" required><t-input v-model="form.proxyBaseUrl" placeholder="http://real-backend:9090" /></t-form-item>
-    <t-form-item label="过滤前缀"><t-input v-model="form.stripPrefix" placeholder="转发时去掉此前缀，例如：/api/v1" /></t-form-item>
+    <t-form-item label="过滤前缀">
+      <div class="prefix-row">
+        <t-input v-model="form.stripPrefix" placeholder="转发时去掉此前缀，例如：/api/v1" :style="{ flex: 1, minWidth: '50vh' }" />
+        <t-button v-if="form.prefix" size="small" variant="text" @click="form.stripPrefix = form.prefix" title="从 URL 前缀填入">
+          <template #icon><t-icon name="arrow-down" /></template>
+          同步URL前缀
+        </t-button>
+      </div>
+    </t-form-item>
   </template>
   <t-divider>高级配置</t-divider>
   <t-form-item label="响应延时(ms)"><t-input-number v-model="form.fixedDelay" :min="0" :max="300000" :style="{ width: '140px' }" /><span class="text-sm text-muted" style="margin-left:8px">0 = 无延迟</span></t-form-item>
