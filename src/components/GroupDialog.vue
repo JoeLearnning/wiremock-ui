@@ -6,6 +6,7 @@ import type { GroupInfo } from '@/api/types'
 const props = defineProps<{
   visible: boolean
   group: GroupInfo | null
+  defaultParentId?: string
 }>()
 
 const emit = defineEmits<{
@@ -38,7 +39,7 @@ watch(
       name.value = props.group?.name || ''
       description.value = props.group?.description || ''
       prefix.value = props.group?.prefix || ''
-      parentId.value = props.group?.parentId || ''
+      parentId.value = props.group?.parentId || props.defaultParentId || ''
     }
   }
 )

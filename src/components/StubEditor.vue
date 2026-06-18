@@ -51,8 +51,15 @@ function loadStub(s: StubMapping) {
   if (s.request?.url) { f.urlType = 'url'; rawUrl = s.request.url }
   else if (s.request?.urlPath) { f.urlType = 'urlPath'; rawUrl = s.request.urlPath }
   else if (s.request?.urlPathPattern) { f.urlType = 'urlPathPattern'; rawUrl = s.request.urlPathPattern }
-  else if (s.request?.urlPattern) { f.urlType = 'urlPattern'; rawUrl = s.request.urlPattern }
-  else { f.urlType = 'url'; rawUrl = '/' }
+  else if (s.request?.urlPattern) {
+    const anyUrlPattern = savedPrefix ? savedPrefix.replace(/\/+$/, '') + '/.*' : '.*'
+    if (s.request.urlPattern === anyUrlPattern) {
+      f.urlType = 'anyUrl'; f.url = ''
+    } else {
+      f.urlType = 'urlPattern'; rawUrl = s.request.urlPattern
+    }
+  }
+  else { f.urlType = 'anyUrl'; f.url = ''; rawUrl = '' }
   // 去掉已存储的前缀，UI 中只显示相对路径
   if (savedPrefix && rawUrl.startsWith(savedPrefix)) {
     rawUrl = rawUrl.slice(savedPrefix.length) || '/'
@@ -154,15 +161,21 @@ function resetForm() {
 }
 
 function buildStub(): StubMapping {
-  // 拼上前缀（如果 URL 还没包含前缀的话）
+  // 拼上前缀（如果 URL 还没包含前缀的话）—— 任意 URL 模式不追加前缀，URL 已包含正则
   let fullUrl = form.value.url
-  if (form.value.prefix) {
+  if (form.value.urlType !== 'anyUrl' && form.value.prefix) {
     const pfx = form.value.prefix.endsWith('/') ? form.value.prefix.slice(0, -1) : form.value.prefix
     if (!fullUrl.startsWith(pfx)) {
       fullUrl = pfx + (fullUrl.startsWith('/') ? fullUrl : '/' + fullUrl)
     }
   }
-  const request: any = { method: form.value.method, [form.value.urlType]: fullUrl }
+  const request: any = { method: form.value.method }
+  if (form.value.urlType === 'anyUrl') {
+    const pfx = form.value.prefix ? form.value.prefix.replace(/\/+$/, '') : ''
+    request.urlPattern = pfx ? pfx + '/.*' : '.*'
+  } else {
+    request[form.value.urlType] = fullUrl
+  }
 
   // Convert filters to WireMock patterns
   const validFilters = form.value.filters.filter((f: any) => f.key.trim() || f.type === 'body')
@@ -250,7 +263,7 @@ function buildStub(): StubMapping {
  * 保存时先获取最新 metadata，保留 Playground 中保存的 testRequest，防止被覆盖
  */
 async function handleSavePreservingTestRequest() {
-  if (!form.value.url.trim()) return
+  if (form.value.urlType !== 'anyUrl' && !form.value.url.trim()) return
   const stub = buildStub()
   // 从 WireMock 获取最新 metadata，确保 testRequest 不被覆盖
   const stubId = (props.stub?.uuid || props.stub?.id)
@@ -315,8 +328,16 @@ function handlePreviewSave() {
     if (req.url) { f.urlType = 'url'; f.url = req.url }
     else if (req.urlPath) { f.urlType = 'urlPath'; f.url = req.urlPath }
     else if (req.urlPathPattern) { f.urlType = 'urlPathPattern'; f.url = req.urlPathPattern }
-    else if (req.urlPattern) { f.urlType = 'urlPattern'; f.url = req.urlPattern }
-    else { f.urlType = 'url'; f.url = '/' }
+    else if (req.urlPattern) {
+      const metaPrefix = (parsed.metadata?.prefix as string) || ''
+      const anyPattern = metaPrefix ? metaPrefix.replace(/\/+$/, '') + '/.*' : '.*'
+      if (req.urlPattern === anyPattern) {
+        f.urlType = 'anyUrl'; f.url = ''
+      } else {
+        f.urlType = 'urlPattern'; f.url = req.urlPattern
+      }
+    }
+    else { f.urlType = 'anyUrl'; f.url = '' }
     // filters
     const filters: any[] = []
     const parsePats = (pats: any, type: string) => {

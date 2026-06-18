@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { watch, ref } from 'vue'
+import { watch, ref, computed } from 'vue'
 import { useGroupsStore } from '@/stores/groups'
 import JsonEditor from './JsonEditor.vue'
 
@@ -120,6 +120,35 @@ const JSONPATH_SUB_MATCHERS = [
 
 const groupsStore = useGroupsStore()
 
+// 分组扁平化树形选项（带缩进层级）
+const groupOptions = computed(() => {
+  const result: { id: string; name: string; depth: number }[] = []
+  function walk(parentId: string | undefined, depth: number) {
+    const children = parentId
+      ? groupsStore.groups.filter(g => g.parentId === parentId)
+      : groupsStore.rootGroups
+    for (const g of children) {
+      result.push({ id: g.id, name: g.name || g.id, depth })
+      walk(g.id, depth + 1)
+    }
+  }
+  walk(undefined, 0)
+  return result
+})
+
+// 当选中分组且分组有 URL 前缀时，前缀输入框禁用
+const prefixDisabled = computed(() => {
+  // 1. 无选中分组，不禁用
+  const selectedGroupId = form.value.selectedGroupId
+  if (!selectedGroupId) return false
+
+  // 2. 从store响应式分组列表查找，使用store的响应式getter（关键）
+  const targetGroup = groupsStore.groups.find(item => item.id === selectedGroupId)
+  console.log(targetGroup);
+  // 3. 分组存在 && 有prefix字符串 → 禁用
+  return !!(targetGroup && targetGroup.prefix)
+})
+
 function getOperators(filterType: string): { value: string; label: string; hasCaseInsensitive?: boolean; disabled?: boolean }[] {
   if (filterType === 'body') {
     return [
@@ -177,8 +206,17 @@ watch(() => form.value.bodyType, (bt, oldBt) => {
   }
 })
 
+// 选中任意 URL → 转为路径与查询正则，自动填充匹配全部的正则表达式
+watch(() => form.value.urlType, (urlType) => {
+  if (urlType === 'anyUrl') {
+    const pfx = form.value.prefix || ''
+    form.value.url = pfx ? pfx.replace(/\/+$/, '') + '/.*' : '.*'
+  }
+})
+
 function getUrlPlaceholder() {
   const map: Record<string, string> = { url: '/api/user/info', urlPath: '/api/user', urlPathPattern: '/api/.*', urlPattern: '.*/api/user/.*' }
+  if (form.value.urlType === 'anyUrl') return '匹配所有请求，无需输入 URL'
   return map[form.value.urlType] || ''
 }
 function addResponseHeader() { form.value.responseHeaders.push({ key: '', value: '' }) }
@@ -231,22 +269,32 @@ function onFilterKeyChange(f: any) {
   <t-form-item label="规则名称"><t-input v-model="form.name" placeholder="便于识别的名称（可选）" /></t-form-item>
   <t-form-item label="描述"><t-input v-model="form.description" placeholder="规则说明，例如接口用途、请求参数等" /></t-form-item>
   <t-form-item label="所属分组">
-    <t-select v-model="form.selectedGroupId" clearable placeholder="选择分组（可选）" :style="{ width: '200px' }"><t-option v-for="g in groupsStore.groups" :key="g.id" :value="g.id" :label="g.name" /></t-select>
+    <t-select v-model="form.selectedGroupId" clearable placeholder="选择分组（可选）" :style="{ width: '200px' }">
+      <t-option v-for="item in groupOptions" :key="item.id" :value="item.id" :label="item.name">
+        <span class="group-option-label"><span v-for="n in item.depth" :key="n" class="group-indent" />{{ item.depth > 0 ? '└ ' : '' }}{{ item.name }}</span>
+      </t-option>
+    </t-select>
   </t-form-item>
   <t-form-item label="优先级"><t-input-number v-model="form.priority" :min="1" :max="100" :style="{ width: '120px' }" /><span class="text-sm text-muted" style="margin-left:8px">越小越优先</span></t-form-item>
   <t-divider>请求匹配</t-divider>
   <t-form-item label="请求方法"><t-select v-model="form.method" :style="{ width: '140px' }"><t-option v-for="m in ALL_METHODS" :key="m" :value="m" :label="m" /></t-select></t-form-item>
-  <t-form-item label="URL 类型"><t-radio-group v-model="form.urlType" size="small"><t-radio value="url">精确匹配</t-radio><t-radio value="urlPath">路径匹配</t-radio><t-radio value="urlPathPattern">路径正则</t-radio><t-radio value="urlPattern">全 URL 正则</t-radio></t-radio-group></t-form-item>
+  <t-form-item label="URL 类型"><t-radio-group v-model="form.urlType" size="small">
+    <t-tooltip content="匹配请求的完整路径和查询参数（URL 中 ? 之后的部分），如 /api/user?id=1"><t-radio value="url">路径与查询参数</t-radio></t-tooltip>
+    <t-tooltip content="仅匹配请求的路径部分，不比较查询参数"><t-radio value="urlPath">路径</t-radio></t-tooltip>
+    <t-tooltip content="用正则表达式匹配请求的完整路径和查询参数"><t-radio value="urlPattern">路径与查询正则</t-radio></t-tooltip>
+    <t-tooltip content="用正则表达式仅匹配请求的路径部分"><t-radio value="urlPathPattern">路径正则</t-radio></t-tooltip>
+    <t-tooltip content="匹配所有请求，不做 URL 过滤"><t-radio value="anyUrl">任意 URL</t-radio></t-tooltip>
+  </t-radio-group></t-form-item>
   <t-form-item label="URL 前缀">
     <div class="prefix-row">
-      <t-input v-model="form.prefix" placeholder="/api/v1" :style="{ width: '160px', fontFamily: 'monospace' }" />
+      <t-input v-model="form.prefix" placeholder="/api/v1" :style="{ width: '160px', fontFamily: 'monospace' }" :disabled="prefixDisabled" />
       <span class="text-sm text-muted">选中分组后自动填充</span>
     </div>
   </t-form-item>
   <t-form-item label="URL" required>
     <div class="url-with-prefix">
       <span v-if="form.prefix" class="url-prefix-badge">{{ form.prefix }}</span>
-      <t-input v-model="form.url" :placeholder="getUrlPlaceholder()" />
+      <t-input v-model="form.url" :placeholder="getUrlPlaceholder()" :disabled="form.urlType === 'anyUrl'" />
     </div>
   </t-form-item>
 
@@ -513,5 +561,15 @@ function onFilterKeyChange(f: any) {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.group-option-label {
+  display: flex;
+  align-items: center;
+  gap: 0;
+}
+.group-indent {
+  display: inline-block;
+  width: 16px;
+  flex-shrink: 0;
 }
 </style>

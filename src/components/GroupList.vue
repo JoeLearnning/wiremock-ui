@@ -12,6 +12,7 @@ const mappingsStore = useMappingsStore()
 
 const showDialog = ref(false)
 const editingGroupId = ref<string | null>(null)
+const pendingParentId = ref<string>('')
 const expandedGroups = ref<Set<string>>(new Set())
 
 function toggleExpand(groupId: string) {
@@ -49,6 +50,7 @@ function getDepth(group: GroupInfo): number {
 
 function handleAdd() {
   editingGroupId.value = null
+  pendingParentId.value = ''
   showDialog.value = true
 }
 
@@ -103,11 +105,22 @@ async function handleDelete(id: string) {
 }
 
 async function handleDialogConfirm(data: { name: string; description: string; parentId?: string; prefix?: string }) {
+  // 检查 URL 前缀是否已被其他分组使用
+  const newPrefix = (data.prefix || '').trim()
+  if (newPrefix) {
+    const duplicate = groupsStore.groups.find(g =>
+      g.id !== editingGroupId.value && g.prefix === newPrefix
+    )
+    if (duplicate) {
+      MessagePlugin.warning(`URL 前缀 "${newPrefix}" 已存在于分组「${duplicate.name}」，不能重复`)
+      return
+    }
+  }
+
   if (editingGroupId.value) {
     // 编辑：记录原分组信息，再更新
     const oldGroup = groupsStore.groups.find(g => g.id === editingGroupId.value)
     const oldPrefix = oldGroup?.prefix || ''
-    const newPrefix = data.prefix || ''
 
     await groupsStore.updateGroup(editingGroupId.value, data)
 
@@ -120,20 +133,24 @@ async function handleDialogConfirm(data: { name: string; description: string; pa
           try {
             const stub = await mappingsApi.getMapping(stubId)
             if (!stub) continue
-            // 更新 URL 字段：替换前缀
             const req = stub.request
             if (!req) continue
             let changed = false
+            // 更新 URL 字段：用 stub 自己的前缀（metadata.prefix）或旧分组前缀去匹配并替换
+            const urlPrefix = (stub.metadata as any)?.prefix || oldPrefix
             for (const key of ['url', 'urlPath', 'urlPathPattern', 'urlPattern'] as const) {
               const val = req[key]
-              if (val && oldPrefix && val.startsWith(oldPrefix)) {
-                req[key] = newPrefix + val.slice(oldPrefix.length)
+              if (val && urlPrefix && val.startsWith(urlPrefix)) {
+                req[key] = newPrefix + val.slice(urlPrefix.length)
                 changed = true
               }
             }
             // 更新 metadata.prefix
-            if (stub.metadata) {
-              (stub.metadata as any).prefix = newPrefix || undefined
+            const oldMetaPrefix = (stub.metadata as any)?.prefix || ''
+            if (oldMetaPrefix !== newPrefix) {
+              if (!stub.metadata) stub.metadata = {}
+              ;(stub.metadata as any).prefix = newPrefix || undefined
+              changed = true
             }
             if (changed) {
               await mappingsApi.updateMapping(stubId, stub)
@@ -161,9 +178,8 @@ async function handleDialogConfirm(data: { name: string; description: string; pa
 
 function handleAddChild(parentId: string) {
   editingGroupId.value = null
+  pendingParentId.value = parentId
   showDialog.value = true
-  // 下次打开对话框时自动选择父分组
-  // 需要通过监听 showDialog 来设置默认值
 }
 
 // 扁平化分组列表用于渲染
@@ -283,6 +299,7 @@ const flatGroups = computed<FlatGroupItem[]>(() => {
     <GroupDialog
       v-model:visible="showDialog"
       :group="editingGroupId ? groupsStore.groups.find(g => g.id === editingGroupId) ?? null : null"
+      :default-parent-id="pendingParentId"
       @confirm="handleDialogConfirm"
     />
   </div>

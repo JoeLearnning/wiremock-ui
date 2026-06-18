@@ -6,7 +6,6 @@ import { useGroupsStore } from '@/stores/groups'
 import GroupList from '@/components/GroupList.vue'
 import StubList from '@/components/StubList.vue'
 import StubEditor from '@/components/StubEditor.vue'
-import ProxySettings from '@/components/ProxySettings.vue'
 import type { StubMapping } from '@/api/types'
 
 const mappingsStore = useMappingsStore()
@@ -15,7 +14,7 @@ const openPlayground = inject<(config?: any) => void>('openPlayground')!
 
 const editingStub = ref<StubMapping | null>(null)
 const creatingNew = ref(false)
-const activeTab = ref<'stubs' | 'proxy'>('stubs')
+const activeTab = ref('stubs')
 
 onMounted(async () => {
   try {
@@ -117,9 +116,7 @@ async function handleDelete() {
               </div>
             </div>
           </t-tab-panel>
-          <t-tab-panel value="proxy" label="代理转发">
-            <ProxySettings />
-          </t-tab-panel>
+
         </t-tabs>
       </div>
     </main>
