@@ -33,3 +33,4 @@ npm-debug.log*
 *.tsbuildinfo
 /.reasonix
 reasonix.toml
+/.codebuddy

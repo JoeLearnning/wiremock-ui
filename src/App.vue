@@ -2,9 +2,11 @@
 import { ref, onMounted, watch, provide } from 'vue'
 import { RouterView, useRouter, useRoute } from 'vue-router'
 import Playground from '@/views/Playground.vue'
+import { useThemeStore } from '@/stores/theme'
 
 const router = useRouter()
 const route = useRoute()
+const themeStore = useThemeStore()
 
 const navItems = [
   { path: '/', label: 'Mock 管理', icon: 'app' },
@@ -14,6 +16,7 @@ const navItems = [
 
 const showPlayground = ref(false)
 const playgroundPreset = ref<any>(null)
+const customColor = ref(themeStore.activeColor)
 
 // 提供 openPlayground 给子组件（Dashboard）调用
 provide('openPlayground', (config?: any) => {
@@ -55,6 +58,26 @@ watch(isDark, () => {
 function applyDark() {
   document.documentElement.classList.toggle('dark', isDark.value)
 }
+
+function selectThemeColor(color: string) {
+  themeStore.setActiveColor(color)
+}
+
+function selectCustomThemeColor(event: Event) {
+  const target = event.target as HTMLInputElement | null
+  if (!target) {
+    return
+  }
+  themeStore.setActiveColor(target.value)
+}
+
+watch(
+  () => themeStore.activeColor,
+  (value) => {
+    customColor.value = value
+  },
+  { immediate: true }
+)
 </script>
 
 <template>
@@ -77,6 +100,43 @@ function applyDark() {
         </span>
       </nav>
       <Playground v-model:visible="showPlayground" :preset-request="playgroundPreset" />
+      <t-popup trigger="click" placement="bottom-right">
+        <t-button
+          theme="default"
+          variant="text"
+          shape="square"
+          class="theme-toggle"
+          title="选择主题色"
+        >
+          <t-icon name="palette" size="18px" />
+        </t-button>
+        <template #content>
+          <div class="theme-picker" role="listbox" aria-label="主题色选择">
+            <div class="theme-swatches">
+              <button
+                v-for="color in themeStore.palette"
+                :key="color"
+                class="theme-swatch"
+                :class="{ active: themeStore.activeColor === color }"
+                :style="{ backgroundColor: color }"
+                :title="`主题色 ${color}`"
+                @click="selectThemeColor(color)"
+              />
+            </div>
+            <div class="theme-custom-row">
+              <span class="theme-custom-label">自定义</span>
+              <input
+                class="theme-custom-input"
+                type="color"
+                :value="customColor"
+                @input="selectCustomThemeColor"
+                aria-label="自定义主题色"
+              />
+              <span class="theme-custom-value">{{ customColor }}</span>
+            </div>
+          </div>
+        </template>
+      </t-popup>
       <t-button
         theme="default"
         variant="text"
@@ -150,8 +210,66 @@ function applyDark() {
   color: rgba(255, 255, 255, 0.85) !important;
   margin-left: 8px;
 }
+.theme-toggle {
+  color: rgba(255, 255, 255, 0.85) !important;
+  margin-left: 8px;
+}
 .dark-toggle:hover {
   color: #fff !important;
+}
+.theme-toggle:hover {
+  color: #fff !important;
+}
+.theme-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px;
+  background: var(--td-bg-color-container);
+  border: 1px solid var(--td-component-stroke);
+  border-radius: 8px;
+}
+.theme-swatches {
+  display: grid;
+  grid-template-columns: repeat(3, 24px);
+  gap: 8px;
+}
+.theme-swatch {
+  width: 24px;
+  height: 24px;
+  border: 2px solid transparent;
+  border-radius: 50%;
+  cursor: pointer;
+  transition: transform 0.15s ease, border-color 0.15s ease;
+}
+.theme-swatch:hover {
+  transform: scale(1.06);
+}
+.theme-swatch.active {
+  border-color: #fff;
+  box-shadow: 0 0 0 2px var(--td-brand-color);
+}
+.theme-custom-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.theme-custom-label {
+  font-size: 12px;
+  color: var(--td-text-color-secondary);
+}
+.theme-custom-input {
+  width: 28px;
+  height: 24px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  padding: 0;
+}
+.theme-custom-value {
+  font-size: 12px;
+  color: var(--td-text-color-placeholder);
+  font-family: Consolas, 'Courier New', monospace;
 }
 .app-content {
   flex: 1;

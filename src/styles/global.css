@@ -3,6 +3,10 @@
 :root {
   --app-primary: #0052d9;
   --app-sidebar-width: 260px;
+  --theme-primary: #58a6ff;
+  --theme-primary-light: #58a6ff1f;
+  --td-brand-color: var(--theme-primary);
+  --td-brand-color-light: var(--theme-primary-light);
 }
 
 * {
@@ -66,8 +70,8 @@ body {
 /* ===================== GitHub Dark Mode ===================== */
 html.dark {
   color-scheme: dark;
-  --td-brand-color: #58a6ff;
-  --td-brand-color-light: rgba(88, 166, 255, 0.12);
+  --td-brand-color: var(--theme-primary);
+  --td-brand-color-light: var(--theme-primary-light);
   --td-bg-color-page: #0d1117;
   --td-bg-color-container: #161b22;
   --td-bg-color-container-hover: #1c2128;
@@ -104,7 +108,7 @@ html.dark .act-btn {
   color: #8b949e !important;
 }
 html.dark .act-btn:hover {
-  color: #58a6ff !important;
+  color: var(--theme-primary) !important;
 }
 html.dark .close-btn:hover {
   color: #f85149 !important;

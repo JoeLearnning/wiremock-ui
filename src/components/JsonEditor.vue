@@ -15,6 +15,11 @@ const highlighterRef = ref<HTMLPreElement | null>(null)
 const localValue = ref(props.modelValue)
 const error = ref('')
 const lineCount = ref(1)
+const maximized = ref(false)
+
+function toggleMaximize() {
+  maximized.value = !maximized.value
+}
 
 watch(() => props.modelValue, (val) => {
   localValue.value = val
@@ -155,6 +160,11 @@ function validate() {
 }
 
 function handleKeydown(e: KeyboardEvent) {
+  if (e.key === 'Escape' && maximized.value) {
+    e.preventDefault()
+    maximized.value = false
+    return
+  }
   if (e.key === 'Tab') {
     e.preventDefault()
     const ta = editorRef.value
@@ -353,38 +363,49 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="json-editor">
-    <div class="editor-toolbar">
-      <div class="toolbar-left">
-        <span class="toolbar-hint">{{ formatLabel }}</span>
-        <span v-if="error" class="error-indicator" :title="error">⚠ Syntax Error</span>
+  <div class="json-editor-wrapper">
+    <!-- 全屏遮罩（v-if 渲染，不影响编辑器 ref） -->
+    <div v-if="maximized" class="editor-fullscreen-backdrop" @click.self="toggleMaximize" />
+
+    <!-- 单实例编辑器：通过 CSS 切换全屏/内联模式 -->
+    <div class="json-editor" :class="{ 'editor-maximized': maximized }">
+      <div class="editor-toolbar">
+        <div class="toolbar-left">
+          <span class="toolbar-hint">{{ formatLabel }}</span>
+          <span v-if="error" class="error-indicator" :title="error">⚠ Syntax Error</span>
+        </div>
+        <div class="toolbar-right">
+          <t-button size="small" variant="text" @click="format" title="Format (Ctrl+Shift+F)">
+            <template #icon><t-icon name="format" /></template>
+            Format
+          </t-button>
+          <t-button size="small" variant="text" @click="clearContent" title="Clear">Clear</t-button>
+          <t-button size="small" variant="text" @click="copyContent" title="Copy">
+            <template #icon><t-icon name="file-copy" /></template>
+          </t-button>
+          <span class="toolbar-sep" />
+          <t-button size="small" variant="text" @click="toggleMaximize" :title="maximized ? '还原 (Esc)' : '最大化编辑区'">
+            <template #icon><t-icon :name="maximized ? 'fullscreen-exit' : 'fullscreen-1'" /></template>
+            <template v-if="maximized">还原</template>
+          </t-button>
+        </div>
       </div>
-      <div class="toolbar-right">
-        <t-button size="small" variant="text" @click="format" title="Format (Ctrl+Shift+F)">
-          <template #icon><t-icon name="format" /></template>
-          Format
-        </t-button>
-        <t-button size="small" variant="text" @click="clearContent" title="Clear">Clear</t-button>
-        <t-button size="small" variant="text" @click="copyContent" title="Copy">
-          <template #icon><t-icon name="file-copy" /></template>
-        </t-button>
-      </div>
-    </div>
-    <div class="editor-body">
-      <div class="line-numbers">
-        <div v-for="ln in lineNumbers" :key="ln" class="line-num">{{ ln }}</div>
-      </div>
-      <div class="code-area">
-        <pre ref="highlighterRef" class="highlight-layer" v-html="highlightedHtml" />
-        <textarea
-          ref="editorRef"
-          class="editor-textarea"
-          :value="localValue"
-          spellcheck="false"
-          @input="onInput"
-          @scroll="syncScroll"
-          @keydown="handleKeydown"
-        />
+      <div class="editor-body">
+        <div class="line-numbers">
+          <div v-for="ln in lineNumbers" :key="ln" class="line-num">{{ ln }}</div>
+        </div>
+        <div class="code-area">
+          <pre ref="highlighterRef" class="highlight-layer" v-html="highlightedHtml" />
+          <textarea
+            ref="editorRef"
+            class="editor-textarea"
+            :value="localValue"
+            spellcheck="false"
+            @input="onInput"
+            @scroll="syncScroll"
+            @keydown="handleKeydown"
+          />
+        </div>
       </div>
     </div>
   </div>
@@ -413,6 +434,35 @@ onMounted(() => {
 .toolbar-left { display: flex; align-items: center; gap: 8px; }
 .toolbar-hint { font-size: 12px; font-weight: 600; color: var(--td-text-color-placeholder); }
 .error-indicator { font-size: 12px; color: var(--td-error-color); cursor: help; }
+.toolbar-sep { width: 1px; height: 20px; background: var(--td-component-stroke); margin: 0 4px; flex-shrink: 0; }
+
+/* ── 最大化全屏模式（单实例，通过 CSS 切换） ── */
+.json-editor-wrapper { position: relative; width: 100%; }
+.editor-fullscreen-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 9998;
+  background: rgba(0, 0, 0, 0.55);
+}
+.json-editor.editor-maximized {
+  position: fixed;
+  inset: 40px;
+  z-index: 9999;
+  width: auto;
+  height: auto;
+  min-height: 0;
+  max-height: none;
+  display: flex;
+  flex-direction: column;
+}
+.json-editor.editor-maximized .editor-body {
+  flex: 1;
+  min-height: 0 !important;
+  max-height: none !important;
+}
+.json-editor.editor-maximized .editor-textarea {
+  height: 100%;
+}
 
 .editor-body {
   display: flex;
